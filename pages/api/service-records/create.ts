@@ -37,7 +37,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const designerInfo = designer ? `\n\n담당: ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}${designer.business_hours ? `\n영업시간: ${designer.business_hours}` : ''}` : ''
     const message = `[헤어로그] 시술 내역 안내\n\n${customer_name}님, 오늘 시술해 주셔서 감사합니다 😊\n\n📋 시술 내역\n날짜: ${service_date}\n시술: ${service_type}${memo ? `\n메모: ${memo}` : ''}${designerInfo}`
 
-   const { default: SolapiMessageService } = await import('solapi')
+const solapi = require('solapi')
+const SolapiMessageService = solapi.SolapiMessageService || solapi.default || solapi
 const messageService = new SolapiMessageService(process.env.SOLAPI_API_KEY, process.env.SOLAPI_API_SECRET)
 await messageService.sendOne({ to: phone, from: '07080805174', text: message })
     await supabaseAdmin.from('service_records').update({ sms_sent: true, sms_sent_at: new Date().toISOString() }).eq('id', record.id)
