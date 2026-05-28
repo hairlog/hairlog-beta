@@ -28,7 +28,7 @@ export default function CustomerDetail() {
     const { data: c } = await supabase.from('customers').select('*').eq('id', id).single()
     setCustomer(c)
     setMemoVal(c?.designer_memo || '')
-    const { data: r } = await supabase.from('service_records').select('*').eq('customer_id', id).order('service_date', { ascending: false })
+    const { data: r } = await supabase.from('service_records').select('*').eq('customer_id', id).order('created_at', { ascending: false })
     setRecords(r || [])
   }
 
