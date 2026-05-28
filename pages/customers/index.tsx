@@ -4,12 +4,31 @@ import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
+type VisitStatus = 'recent' | 'warn' | 'danger' | 'none'
+
+function getVisitStatus(last_visit_at: string | null): VisitStatus {
+  if (!last_visit_at) return 'none'
+  const days = Math.floor((Date.now() - new Date(last_visit_at).getTime()) / 86400000)
+  if (days >= 60) return 'danger'
+  if (days >= 30) return 'warn'
+  return 'recent'
+}
+
+const STATUS_META: Record<VisitStatus, { dot: string; badge: string; label: string }> = {
+  recent: { dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700',  label: '최근방문' },
+  warn:   { dot: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700', label: '방문권장' },
+  danger: { dot: 'bg-red-500',    badge: 'bg-red-100 text-red-600',       label: '장기미방문' },
+  none:   { dot: 'bg-gray-300',   badge: 'bg-gray-100 text-gray-500',     label: '방문기록없음' },
+}
+
 export default function Customers() {
   const router = useRouter()
   const [session, setSession] = useState<any>(null)
   const [customers, setCustomers] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [genderFilter, setGenderFilter] = useState<'all' | 'female' | 'male'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'recent' | 'warn' | 'danger'>('all')
 
   useEffect(() => {
     const s = getSession()
@@ -20,63 +39,101 @@ export default function Customers() {
 
   async function loadCustomers(designer_id: string) {
     setLoading(true)
-    const { data } = await supabase.from('customers').select('*').eq('designer_id', designer_id).order('last_visit_at', { ascending: false })
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('designer_id', designer_id)
+      .order('last_visit_at', { ascending: false, nullsLast: true })
     setCustomers(data || [])
     setLoading(false)
   }
 
-  const filtered = customers.filter(c =>
-    c.name.includes(search) || c.phone.includes(search)
-  )
-
-  function getVisitStatus(last_visit_at: string) {
-    if (!last_visit_at) return null
-    const days = Math.floor((Date.now() - new Date(last_visit_at).getTime()) / (1000 * 60 * 60 * 24))
-    if (days >= 60) return { label: '장기미방문', color: 'bg-red-100 text-red-600' }
-    if (days >= 30) return { label: '재방문필요', color: 'bg-orange-100 text-orange-600' }
-    return null
-  }
+  const filtered = customers.filter(c => {
+    const q = search.trim()
+    const matchSearch = !q
+      || c.name?.includes(q)
+      || c.phone?.replace(/-/g, '').slice(-4) === q
+      || c.phone?.includes(q)
+    const matchGender = genderFilter === 'all' || c.gender === genderFilter
+    const matchStatus = statusFilter === 'all' || getVisitStatus(c.last_visit_at) === statusFilter
+    return matchSearch && matchGender && matchStatus
+  })
 
   if (!session) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-8">
       <div className="bg-white shadow-sm px-4 py-4 flex items-center gap-3">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-500">←</button>
+        <button onClick={() => router.push('/dashboard')} className="text-gray-500 text-lg">←</button>
         <h2 className="text-lg font-semibold">고객 목록</h2>
-        <span className="ml-auto text-sm text-gray-400">{customers.length}명</span>
+        <span className="ml-auto text-sm text-gray-400 font-medium">총 {customers.length}명</span>
       </div>
 
-      <div className="px-4 py-4 max-w-lg mx-auto">
+      <div className="bg-white border-b border-gray-100 px-4 py-3">
         <input
-          className="input mb-4"
-          placeholder="🔍 이름 또는 전화번호로 검색"
+          className="input text-sm"
+          placeholder="🔍 이름 또는 뒷번호(4자리) 검색"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+      </div>
 
+      <div className="bg-white border-b border-gray-100 px-4 pb-3 pt-2 space-y-2">
+        <div className="flex gap-2">
+          {(['all', 'female', 'male'] as const).map(v => (
+            <button key={v} onClick={() => setGenderFilter(v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition
+                ${genderFilter === v ? 'bg-primary text-white border-primary' : 'bg-white text-gray-500 border-gray-300'}`}>
+              {v === 'all' ? '전체' : v === 'female' ? '여성 👩' : '남성 👨'}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {(['all', 'recent', 'warn', 'danger'] as const).map(v => (
+            <button key={v} onClick={() => setStatusFilter(v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition
+                ${statusFilter === v ? 'bg-accent text-white border-accent' : 'bg-white text-gray-500 border-gray-300'}`}>
+              {v === 'all' ? '전체' : v === 'recent' ? '🟢 최근방문' : v === 'warn' ? '🟡 방문권장' : '🔴 장기미방문'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 max-w-lg mx-auto">
         {loading ? (
           <p className="text-center text-gray-400 py-10">불러오는 중...</p>
         ) : filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-10">고객이 없어요</p>
+          <p className="text-center text-gray-400 py-10">해당하는 고객이 없어요</p>
         ) : (
           <div className="space-y-2">
             {filtered.map(c => {
               const status = getVisitStatus(c.last_visit_at)
+              const meta = STATUS_META[status]
+              const last4 = c.phone?.replace(/-/g, '').slice(-4)
+              const daysAgo = c.last_visit_at
+                ? Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000)
+                : null
               return (
-                <Link key={c.id} href={`/customers/${c.id}`} className="card flex items-center justify-between hover:shadow-md transition cursor-pointer block">
-                  <div>
-                    <p className="font-semibold">{c.name}</p>
-                    <p className="text-sm text-gray-400">{c.phone}</p>
-                    {c.last_visit_at && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        마지막 방문: {new Date(c.last_visit_at).toLocaleDateString('ko-KR')}
-                      </p>
-                    )}
+                <Link key={c.id} href={`/customers/${c.id}`}
+                  className="card flex items-center gap-3 hover:shadow-md transition cursor-pointer block">
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.dot}`} />
+                  <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-base flex-shrink-0">
+                    {c.name?.[0] || '?'}
                   </div>
-                  {status && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>{status.label}</span>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm">{c.name}</span>
+                      {last4 && <span className="text-xs text-gray-400">({last4})</span>}
+                      {c.gender === 'female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-1.5 py-0.5">여</span>}
+                      {c.gender === 'male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-1.5 py-0.5">남</span>}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {daysAgo !== null ? `${daysAgo}일 전 방문` : '방문 기록 없음'}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${meta.badge}`}>
+                    {meta.label}
+                  </span>
                 </Link>
               )
             })}
