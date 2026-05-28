@@ -59,12 +59,13 @@ export default function Revisit() {
   const [statusFilter, setStatusFilter] = useState<'all'|'warn'|'danger'>('all')
   const [selected, setSelected] = useState<string[]>([])
   const [showMsgSetting, setShowMsgSetting] = useState(false)
+  const [showPeriodSetting, setShowPeriodSetting] = useState(false)
   const [msgTab, setMsgTab] = useState('cut')
-  const [msgTemplates, setMsgTemplates] = useState<Record<string, {warn:string;danger:string}>>(
-    JSON.parse(JSON.stringify(DEFAULT_MSGS))
-  )
+  const [msgTemplates, setMsgTemplates] = useState<Record<string, {warn:string;danger:string}>>(JSON.parse(JSON.stringify(DEFAULT_MSGS)))
   const [msgEdit, setMsgEdit] = useState<{warn:string;danger:string}>(DEFAULT_MSGS.cut)
   const [savingMsg, setSavingMsg] = useState(false)
+  const [periodEdit, setPeriodEdit] = useState<Record<string, number>>({...DEFAULT_PERIODS})
+  const [savingPeriod, setSavingPeriod] = useState(false)
 
   useEffect(() => {
     const s = getSession()
@@ -82,12 +83,15 @@ export default function Revisit() {
       setMsgTemplates(merged)
       setMsgEdit(merged['cut'] || DEFAULT_MSGS['cut'])
     }
+    if (d?.revisit_settings) {
+      setPeriodEdit({ ...DEFAULT_PERIODS, ...d.revisit_settings })
+    }
     const { data: cList } = await supabase.from('customers').select('*').eq('designer_id', designer_id)
     if (!cList) { setLoading(false); return }
     const enriched = await Promise.all(cList.map(async c => {
-      const { data: lastRec } = await supabase
-        .from('service_records').select('service_type, service_date')
-        .eq('customer_id', c.id).order('service_date', { ascending: false }).limit(1).single()
+      const { data: lastRec } = await supabase.from('service_records')
+        .select('service_type, service_date').eq('customer_id', c.id)
+        .order('service_date', { ascending: false }).limit(1).single()
       return { ...c, last_service: lastRec }
     }))
     setCustomers(enriched)
@@ -106,13 +110,18 @@ export default function Revisit() {
     return 'recent'
   }
 
+  function canSendRevisit(c: any): boolean {
+    if (!c.last_revisit_sms_at) return true
+    const days = Math.floor((Date.now() - new Date(c.last_revisit_sms_at).getTime()) / 86400000)
+    return days >= 10
+  }
+
   const filtered = customers.filter(c => {
     const status = getStatus(c)
     if (status === 'recent' || status === 'none') return false
     if (genderFilter !== 'all' && c.gender !== genderFilter) return false
     if (svcFilter !== 'all') {
-      const svcType = detectSvcType(c.last_service?.service_type || '')
-      if (svcType !== svcFilter) return false
+      if (detectSvcType(c.last_service?.service_type || '') !== svcFilter) return false
     }
     if (statusFilter !== 'all' && status !== statusFilter) return false
     return true
@@ -136,11 +145,20 @@ export default function Revisit() {
     setSavingMsg(false)
     alert('✅ 저장됐어요!')
   }
-  function resetMsgTemplate() {
-    setMsgEdit(DEFAULT_MSGS[msgTab as keyof typeof DEFAULT_MSGS])
+  async function savePeriods() {
+    setSavingPeriod(true)
+    await supabase.from('designers').update({ revisit_settings: periodEdit }).eq('id', session.designer_id)
+    setDesigner((prev: any) => ({ ...prev, revisit_settings: periodEdit }))
+    setSavingPeriod(false)
+    alert('✅ 주기 설정이 저장됐어요!')
   }
   async function sendBulk() {
     if (selected.length === 0) { alert('고객을 선택해주세요'); return }
+    const blocked = filtered.filter(c => selected.includes(c.id) && !canSendRevisit(c))
+    if (blocked.length > 0) {
+      alert(`${blocked.map(c => c.name).join(', ')}님은 최근 10일 이내 발송됐어요.`)
+      return
+    }
     if (!confirm(`${selected.length}명에게 재방문 알림을 발송할까요?`)) return
     setSending(true)
     const targets = filtered.filter(c => selected.includes(c.id))
@@ -155,8 +173,12 @@ export default function Revisit() {
       body: JSON.stringify({ designer_id: session.designer_id, customer_ids: selected, messages }),
     })
     setSending(false)
-    if (res.ok) { alert(`✅ ${selected.length}명에게 발송 완료!`); setSelected([]) }
-    else alert('발송 중 오류가 발생했어요')
+    if (res.ok) {
+      // 발송 후 고객 목록 갱신
+      setCustomers(prev => prev.map(c => selected.includes(c.id) ? { ...c, last_revisit_sms_at: new Date().toISOString() } : c))
+      alert(`✅ ${selected.length}명에게 발송 완료!`)
+      setSelected([])
+    } else alert('발송 중 오류가 발생했어요')
   }
 
   if (!session) return null
@@ -174,41 +196,61 @@ export default function Revisit() {
       </div>
 
       <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
+        {/* 필터 */}
         <div className="space-y-2">
           <div className="flex gap-2">
             {[{v:'all',l:'전체'},{v:'female',l:'여성 👩'},{v:'male',l:'남성 👨'}].map(({v,l}) => (
               <button key={v} onClick={() => setGenderFilter(v as any)}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${genderFilter===v?'bg-primary text-white border-primary':'bg-white text-gray-600 border-gray-300'}`}>
-                {l}
-              </button>
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${genderFilter===v?'bg-primary text-white border-primary':'bg-white text-gray-600 border-gray-300'}`}>{l}</button>
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => setSvcFilter('all')}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${svcFilter==='all'?'bg-accent text-white border-accent':'bg-white text-gray-600 border-gray-300'}`}>
-              전체
-            </button>
+            <button onClick={() => setSvcFilter('all')} className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${svcFilter==='all'?'bg-accent text-white border-accent':'bg-white text-gray-600 border-gray-300'}`}>전체</button>
             {SVC_TABS.map(({k, icon, label}) => (
-              <button key={k} onClick={() => setSvcFilter(k)}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${svcFilter===k?'bg-accent text-white border-accent':'bg-white text-gray-600 border-gray-300'}`}>
-                {icon} {label}
-              </button>
+              <button key={k} onClick={() => setSvcFilter(k)} className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${svcFilter===k?'bg-accent text-white border-accent':'bg-white text-gray-600 border-gray-300'}`}>{icon} {label}</button>
             ))}
           </div>
           <div className="flex gap-2">
             {[{v:'all',l:'전체'},{v:'warn',l:'🟡 방문권장'},{v:'danger',l:'🔴 장기미방문'}].map(({v,l}) => (
               <button key={v} onClick={() => setStatusFilter(v as any)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${statusFilter===v?'bg-primary text-white border-primary':'bg-white text-gray-500 border-gray-300'}`}>
-                {l}
-              </button>
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${statusFilter===v?'bg-primary text-white border-primary':'bg-white text-gray-500 border-gray-300'}`}>{l}</button>
             ))}
           </div>
         </div>
 
+        {/* 재방문 주기 설정 */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <button onClick={() => setShowPeriodSetting(!showPeriodSetting)} className="w-full px-5 py-4 flex items-center justify-between text-left">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">⚙️</span>
+              <div>
+                <div className="font-bold text-base">재방문 주기 설정</div>
+                <div className="text-xs text-gray-400 mt-0.5">시술별 방문 권장 주기(일) 커스텀</div>
+              </div>
+            </div>
+            <span className={`text-gray-400 text-lg transition-transform ${showPeriodSetting?'rotate-180':''}`}>∨</span>
+          </button>
+          {showPeriodSetting && (
+            <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+              <p className="text-xs text-gray-400">설정값 기준으로 방문권장/장기미방문이 자동 계산돼요</p>
+              {SVC_TABS.map(({k, icon, label}) => (
+                <div key={k} className="flex items-center gap-3">
+                  <span className="text-sm font-medium w-20">{icon} {label}</span>
+                  <input type="number" value={periodEdit[k] || DEFAULT_PERIODS[k]} onChange={e => setPeriodEdit(prev => ({...prev, [k]: Number(e.target.value)}))}
+                    className="w-20 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none text-center focus:border-accent" min={1} max={365} />
+                  <span className="text-xs text-gray-400">일 후 방문권장</span>
+                </div>
+              ))}
+              <button onClick={savePeriods} disabled={savingPeriod} className="w-full py-2.5 bg-primary text-white rounded-xl text-sm font-bold mt-2 disabled:opacity-50">
+                {savingPeriod ? '저장 중...' : '주기 저장하기 ✓'}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* 발송 문구 설정 */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <button onClick={() => setShowMsgSetting(!showMsgSetting)}
-            className="w-full px-5 py-4 flex items-center justify-between text-left">
+          <button onClick={() => setShowMsgSetting(!showMsgSetting)} className="w-full px-5 py-4 flex items-center justify-between text-left">
             <div className="flex items-center gap-3">
               <span className="text-xl">✏️</span>
               <div>
@@ -223,43 +265,27 @@ export default function Revisit() {
               <div className="flex border-b border-gray-100">
                 {SVC_TABS.map(({k, icon, label}) => (
                   <button key={k} onClick={() => switchMsgTab(k)}
-                    className={`flex-1 py-3 text-xs font-semibold border-b-2 transition ${msgTab===k?'text-primary border-primary':'text-gray-400 border-transparent'}`}>
-                    {icon} {label}
-                  </button>
+                    className={`flex-1 py-3 text-xs font-semibold border-b-2 transition ${msgTab===k?'text-primary border-primary':'text-gray-400 border-transparent'}`}>{icon} {label}</button>
                 ))}
               </div>
               <div className="px-5 py-4 space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-                      <span className="text-sm font-bold text-yellow-600">재방문 권장 문구</span>
-                    </div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div><span className="text-sm font-bold text-yellow-600">재방문 권장 문구</span></div>
                     <span className="text-xs text-gray-400">(발송 시 자동 입력)</span>
                   </div>
-                  <textarea value={msgEdit.warn} onChange={e => setMsgEdit(prev => ({...prev, warn: e.target.value}))}
-                    rows={4} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-accent leading-relaxed" />
+                  <textarea value={msgEdit.warn} onChange={e => setMsgEdit(prev => ({...prev, warn: e.target.value}))} rows={4} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-accent leading-relaxed" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                      <span className="text-sm font-bold text-red-500">장기 미방문 문구</span>
-                    </div>
+                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500"></div><span className="text-sm font-bold text-red-500">장기 미방문 문구</span></div>
                     <span className="text-xs text-gray-400">(발송 시 자동 입력)</span>
                   </div>
-                  <textarea value={msgEdit.danger} onChange={e => setMsgEdit(prev => ({...prev, danger: e.target.value}))}
-                    rows={4} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-accent leading-relaxed" />
+                  <textarea value={msgEdit.danger} onChange={e => setMsgEdit(prev => ({...prev, danger: e.target.value}))} rows={4} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-accent leading-relaxed" />
                 </div>
                 <div className="flex gap-3 pt-1">
-                  <button onClick={resetMsgTemplate}
-                    className="flex-1 py-3 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-500 bg-white hover:bg-gray-50 transition">
-                    기본값으로
-                  </button>
-                  <button onClick={saveMsgTemplate} disabled={savingMsg}
-                    className="flex-1 py-3 bg-primary text-white rounded-2xl text-sm font-bold disabled:opacity-50">
-                    {savingMsg ? '저장 중...' : '저장하기 ✓'}
-                  </button>
+                  <button onClick={() => setMsgEdit(DEFAULT_MSGS[msgTab as keyof typeof DEFAULT_MSGS])} className="flex-1 py-3 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-500 bg-white">기본값으로</button>
+                  <button onClick={saveMsgTemplate} disabled={savingMsg} className="flex-1 py-3 bg-primary text-white rounded-2xl text-sm font-bold disabled:opacity-50">{savingMsg ? '저장 중...' : '저장하기 ✓'}</button>
                 </div>
               </div>
             </div>
@@ -287,21 +313,19 @@ export default function Revisit() {
                 const status = getStatus(c) as 'warn' | 'danger'
                 const meta = STATUS_META[status]
                 const last4 = c.phone?.replace(/-/g,'').slice(-4)
-                const daysAgo = c.last_visit_at
-                  ? Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000) : null
+                const daysAgo = c.last_visit_at ? Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000) : null
                 const svcType = detectSvcType(c.last_service?.service_type || '')
                 const svcInfo = SVC_TABS.find(t => t.k === svcType)
                 const isSelected = selected.includes(c.id)
+                const locked = !canSendRevisit(c)
                 return (
-                  <div key={c.id} onClick={() => toggleSelect(c.id)}
-                    className={`bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer transition shadow-sm border-2 ${isSelected?'border-accent':'border-transparent'}`}>
+                  <div key={c.id} onClick={() => !locked && toggleSelect(c.id)}
+                    className={`bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 transition shadow-sm border-2 ${locked ? 'opacity-60 cursor-not-allowed border-transparent' : isSelected ? 'border-accent cursor-pointer' : 'border-transparent cursor-pointer'}`}>
                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isSelected?'bg-accent border-accent':'border-gray-300'}`}>
                       {isSelected && <span className="text-white text-xs font-bold">✓</span>}
                     </div>
                     <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.dot}`} />
-                    <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-base flex-shrink-0">
-                      {c.name?.[0]}
-                    </div>
+                    <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-base flex-shrink-0">{c.name?.[0]}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-sm">{c.name}</span>
@@ -314,9 +338,10 @@ export default function Revisit() {
                         {daysAgo !== null && <span className="text-xs text-gray-400">· {daysAgo}일 전</span>}
                       </div>
                     </div>
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0 ${meta.badge}`}>
-                      {meta.label}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${meta.badge}`}>{meta.label}</span>
+                      {locked && <span className="text-xs text-gray-400">🔒 10일 잠금</span>}
+                    </div>
                   </div>
                 )
               })}
@@ -327,8 +352,7 @@ export default function Revisit() {
 
       {selected.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 bg-white border-t border-gray-100 shadow-lg">
-          <button onClick={sendBulk} disabled={sending}
-            className="btn-primary w-full py-3.5 text-base font-bold disabled:opacity-50 max-w-lg mx-auto block">
+          <button onClick={sendBulk} disabled={sending} className="btn-primary w-full py-3.5 text-base font-bold disabled:opacity-50 max-w-lg mx-auto block">
             {sending ? '발송 중...' : `📨 선택한 ${selected.length}명에게 알림 발송`}
           </button>
         </div>
