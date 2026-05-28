@@ -7,6 +7,7 @@ export default function Login() {
   const [isSignup, setIsSignup] = useState(false)
   const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
+  const [autoLogin, setAutoLogin] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -33,7 +34,7 @@ export default function Login() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <p className="text-gray-400 text-sm">불러오는 중...</p>
     </div>
   )
@@ -47,6 +48,16 @@ export default function Login() {
         </div>
         <div className="card">
           <h2 className="text-xl font-semibold mb-6">{isSignup ? '회원가입' : '로그인'}</h2>
+
+          {isSignup && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              <p className="text-xs text-amber-700 leading-relaxed">
+                ⚠️ 현재는 베타 서비스 기간으로 기본 정보(이메일, 전화번호 등)를 받고 있지 않아서, 닉네임과 비밀번호 분실 시 찾을 수가 없습니다.<br /><br />
+                <strong>반드시 핸드폰 메모장에 닉네임과 비밀번호를 저장해 놓으세요!</strong>
+              </p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">닉네임</label>
@@ -56,12 +67,22 @@ export default function Login() {
               <label className="block text-sm font-medium mb-1">비밀번호</label>
               <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="비밀번호 입력" required />
             </div>
+            {!isSignup && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <div onClick={() => setAutoLogin(!autoLogin)}
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${autoLogin ? 'bg-accent border-accent' : 'border-gray-300'}`}>
+                  {autoLogin && <span className="text-white text-xs font-bold">✓</span>}
+                </div>
+                <span className="text-sm text-gray-600">자동 로그인</span>
+              </label>
+            )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <button type="submit" className="btn-primary w-full" disabled={loading}>
               {loading ? '처리 중...' : (isSignup ? '가입하기' : '로그인')}
             </button>
           </form>
-          <button onClick={() => setIsSignup(!isSignup)} className="w-full text-center text-sm text-gray-500 mt-4 hover:text-accent">
+          <button onClick={() => { setIsSignup(!isSignup); setError('') }}
+            className="w-full text-center text-sm text-gray-500 mt-4 hover:text-accent">
             {isSignup ? '이미 계정이 있어요 → 로그인' : '처음이에요 → 회원가입'}
           </button>
         </div>
