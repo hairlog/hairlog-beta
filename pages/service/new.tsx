@@ -49,6 +49,7 @@ function lsSet(key: string, val: string[]) {
 export default function NewService() {
   const router = useRouter()
   const [session, setSession] = useState<any>(null)
+  const [designer, setDesigner] = useState<any>(null)
   const [step, setStep] = useState<'form' | 'confirm'>('form')
   const [loading, setLoading] = useState(false)
   const [agreed, setAgreed] = useState(false)
@@ -84,19 +85,17 @@ export default function NewService() {
     const p: Record<string, string[]> = {}
     Object.keys(DEFAULT_PHRASES).forEach(k => { p[k] = lsGet('hl_p_' + k) })
     setMyPhrases(p)
+    import('../../lib/supabase').then(({ supabase }) => {
+      supabase.from('designers').select('*').eq('id', s.designer_id).single()
+        .then(({ data }) => { if (data) setDesigner(data) })
+    })
   }, [])
 
   function toggleTag(svcKey: string, tag: string) {
-    setTags(prev => {
-      const cur = prev[svcKey] || []
-      return { ...prev, [svcKey]: cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag] }
-    })
+    setTags(prev => { const cur = prev[svcKey] || []; return { ...prev, [svcKey]: cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag] } })
   }
   function toggleColorTag(grp: string, tag: string) {
-    setColorTags(prev => {
-      const cur = prev[grp] || []
-      return { ...prev, [grp]: cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag] }
-    })
+    setColorTags(prev => { const cur = prev[grp] || []; return { ...prev, [grp]: cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag] } })
   }
   function addPhrase(tab: string, p: string) {
     setNoteVal(prev => ({ ...prev, [tab]: prev[tab] ? prev[tab] + '\n' + p : p }))
@@ -130,8 +129,7 @@ export default function NewService() {
   }
   function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || [])
-    const toAdd = files.slice(0, 5 - photos.length)
-    toAdd.forEach(file => {
+    files.slice(0, 5 - photos.length).forEach(file => {
       const reader = new FileReader()
       reader.onload = ev => { setPhotos(prev => [...prev, { preview: ev.target?.result as string, file }]) }
       reader.readAsDataURL(file)
@@ -144,14 +142,8 @@ export default function NewService() {
     const urls: string[] = []
     for (const p of photos) {
       const reader = new FileReader()
-      const base64 = await new Promise<string>(resolve => {
-        reader.onload = e => resolve(e.target?.result as string)
-        reader.readAsDataURL(p.file)
-      })
-      const res = await fetch('/api/upload-photo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_base64: base64, file_name: p.file.name, designer_id: session.designer_id }),
-      })
+      const base64 = await new Promise<string>(resolve => { reader.onload = e => resolve(e.target?.result as string); reader.readAsDataURL(p.file) })
+      const res = await fetch('/api/upload-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_base64: base64, file_name: p.file.name, designer_id: session.designer_id }) })
       const data = await res.json()
       if (data.url) urls.push(data.url)
     }
@@ -161,13 +153,8 @@ export default function NewService() {
     const parts: string[] = []
     SERVICE_ITEMS.forEach(({k, label}) => {
       if (!checked[k]) return
-      if (k === 'color') {
-        const cp = Object.entries(colorTags).map(([, ts]) => ts.join(' ')).filter(Boolean)
-        parts.push(label + (cp.length ? ': ' + cp.join(' / ') : ''))
-      } else {
-        const ts = tags[k] || []
-        parts.push(label + (ts.length ? ': ' + ts.join(', ') : ''))
-      }
+      if (k === 'color') { const cp = Object.entries(colorTags).map(([, ts]) => ts.join(' ')).filter(Boolean); parts.push(label + (cp.length ? ': ' + cp.join(' / ') : '')) }
+      else { const ts = tags[k] || []; parts.push(label + (ts.length ? ': ' + ts.join(', ') : '')) }
     })
     return parts.join(' · ')
   }
@@ -177,10 +164,7 @@ export default function NewService() {
     if (!Object.values(checked).some(Boolean)) return '시술 항목을 하나 이상 선택해주세요'
     return ''
   }
-  function goConfirm() {
-    const err = validate(); if (err) { setError(err); return }
-    setError(''); setStep('confirm')
-  }
+  function goConfirm() { const err = validate(); if (err) { setError(err); return }; setError(''); setStep('confirm') }
   async function handleSubmit() {
     if (!agreed) { setError('개인정보 수집 동의가 필요합니다'); return }
     setLoading(true); setError(''); setUploadingPhotos(true)
@@ -188,15 +172,7 @@ export default function NewService() {
     setUploadingPhotos(false)
     const res = await fetch('/api/service-records/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        designer_id: session.designer_id, customer_name: custName, customer_phone: custPhone,
-        service_date: svcDate, service_type: buildSvcSummary(), gender: gender || null,
-        damage_level: dmgLevel || null, damage_part: dmgPart || null,
-        care_method: noteVal.care || null, caution: noteVal.caution || null,
-        next_service: noteVal.next || null, memo: noteVal.memo || null,
-        cust_memo: custMemo || null, secret_recipe: recipe || null,
-        photo_urls: photoUrls.length > 0 ? photoUrls : null,
-      }),
+      body: JSON.stringify({ designer_id: session.designer_id, customer_name: custName, customer_phone: custPhone, service_date: svcDate, service_type: buildSvcSummary(), gender: gender || null, damage_level: dmgLevel || null, damage_part: dmgPart || null, care_method: noteVal.care || null, caution: noteVal.caution || null, next_service: noteVal.next || null, memo: noteVal.memo || null, cust_memo: custMemo || null, secret_recipe: recipe || null, photo_urls: photoUrls.length > 0 ? photoUrls : null }),
     })
     const data = await res.json()
     setLoading(false)
@@ -206,6 +182,11 @@ export default function NewService() {
 
   if (!session) return null
   const noteTabs = [{k:'care',l:'손질법'},{k:'caution',l:'주의사항'},{k:'next',l:'다음시술'},{k:'memo',l:'메모'}]
+
+  // SMS 미리보기용 디자이너 정보
+  const designerPreview = designer
+    ? `\n\n담당: ${designer.salon_name || ''}${designer.position ? ' ' + designer.position : ''} ${designer.name || ''}${designer.business_hours ? '\n영업시간: ' + designer.business_hours : ''}${designer.day_off ? '\n정기휴무: ' + designer.day_off : ''}${designer.temp_holidays ? '\n임시휴무: ' + designer.temp_holidays : ''}`
+    : ''
 
   if (step === 'confirm') {
     const svc = buildSvcSummary()
@@ -236,9 +217,7 @@ export default function NewService() {
             <div className="card">
               <p className="text-xs font-semibold text-gray-500 mb-2">📸 시술 사진 ({photos.length}장)</p>
               <div className="flex gap-2 flex-wrap">
-                {photos.map((p, i) => (
-                  <img key={i} src={p.preview} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />
-                ))}
+                {photos.map((p, i) => <img key={i} src={p.preview} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />)}
               </div>
             </div>
           )}
@@ -253,7 +232,7 @@ export default function NewService() {
           )}
           <div className="card bg-gray-50 border border-gray-200">
             <p className="text-xs font-semibold text-gray-500 mb-2">📱 고객에게 발송될 문자</p>
-            <pre className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap font-sans">{`[헤어로그] 시술 내역 안내\n\n${custName}님, 오늘 시술 감사합니다 😊\n\n📋 시술 내역\n날짜: ${svcDate}\n시술: ${svc}${noteVal.care ? '\n손질법: ' + noteVal.care : ''}${noteVal.caution ? '\n주의사항: ' + noteVal.caution : ''}${noteVal.next ? '\n다음 시술: ' + noteVal.next : ''}`}</pre>
+            <pre className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap font-sans">{`[헤어로그] 시술 내역 안내\n\n${custName}님, 오늘 시술 감사합니다 😊\n\n📋 시술 내역\n날짜: ${svcDate}\n시술: ${svc}${noteVal.care ? '\n손질법: ' + noteVal.care : ''}${noteVal.caution ? '\n주의사항: ' + noteVal.caution : ''}${noteVal.next ? '\n다음 시술: ' + noteVal.next : ''}${designerPreview}`}</pre>
           </div>
           <div className="card">
             <pre className="text-xs text-gray-500 whitespace-pre-wrap leading-relaxed">{PRIVACY_TEXT}</pre>
@@ -280,100 +259,52 @@ export default function NewService() {
       <div className="px-4 py-5 max-w-lg mx-auto space-y-4">
         <div className="card space-y-4">
           <h3 className="font-semibold">👤 고객 정보</h3>
-          <div>
-            <label className="block text-sm font-medium mb-1">고객 이름 <span className="text-red-400">*</span></label>
-            <input className="input" value={custName} onChange={e => setCustName(e.target.value)} placeholder="홍길동" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">휴대전화번호 <span className="text-red-400">*</span></label>
-            <input className="input" value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="010-1234-5678" inputMode="tel" />
-          </div>
+          <div><label className="block text-sm font-medium mb-1">고객 이름 <span className="text-red-400">*</span></label><input className="input" value={custName} onChange={e => setCustName(e.target.value)} placeholder="홍길동" /></div>
+          <div><label className="block text-sm font-medium mb-1">휴대전화번호 <span className="text-red-400">*</span></label><input className="input" value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="010-1234-5678" inputMode="tel" /></div>
           <div>
             <label className="block text-sm font-medium mb-2">성별</label>
             <div className="flex gap-2">
               {[{v:'female',l:'여성 👩'},{v:'male',l:'남성 👨'}].map(({v,l}) => (
                 <button key={v} type="button" onClick={() => setGender(gender === v ? '' : v)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${gender === v ? 'bg-accent text-white border-accent' : 'bg-white text-gray-600 border-gray-300'}`}>
-                  {l}
-                </button>
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${gender === v ? 'bg-accent text-white border-accent' : 'bg-white text-gray-600 border-gray-300'}`}>{l}</button>
               ))}
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">시술 날짜</label>
-            <input className="input" type="date" value={svcDate} onChange={e => setSvcDate(e.target.value)} />
-          </div>
+          <div><label className="block text-sm font-medium mb-1">시술 날짜</label><input className="input" type="date" value={svcDate} onChange={e => setSvcDate(e.target.value)} /></div>
         </div>
 
         <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="font-semibold">✂️ 시술 항목 <span className="text-red-400 text-xs">*</span></h3>
-          </div>
+          <div className="px-4 py-3 border-b border-gray-100"><h3 className="font-semibold">✂️ 시술 항목 <span className="text-red-400 text-xs">*</span></h3></div>
           <div className="divide-y divide-gray-100">
             {SERVICE_ITEMS.map(({k, icon, label}) => {
-              const myStyles = lsGet('hl_s_' + k)
-              const curTags = tags[k] || []
-              const isCkd = !!checked[k]
+              const myStyles = lsGet('hl_s_' + k); const curTags = tags[k] || []; const isCkd = !!checked[k]
               return (
                 <div key={k + '-' + svcTick}>
-                  <button type="button" onClick={() => setChecked(prev => ({...prev, [k]: !prev[k]}))}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition text-left">
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isCkd ? 'bg-primary border-primary' : 'border-gray-300'}`}>
-                      {isCkd && <span className="text-white text-xs font-bold">✓</span>}
-                    </div>
-                    <span className="text-lg">{icon}</span>
-                    <span className="text-sm font-semibold flex-1">{label}</span>
+                  <button type="button" onClick={() => setChecked(prev => ({...prev, [k]: !prev[k]}))} className="w-full flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition text-left">
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isCkd ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isCkd && <span className="text-white text-xs font-bold">✓</span>}</div>
+                    <span className="text-lg">{icon}</span><span className="text-sm font-semibold flex-1">{label}</span>
                   </button>
                   {isCkd && (
                     <div className="bg-gray-50 border-t border-gray-100 px-4 py-3 space-y-3">
-                      {k === 'cut' && (gender === 'male' ? (
-                        <div className="flex flex-wrap gap-2">{CUT_MALE.map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>
-                      ) : !cutLen ? (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-2">기장 선택</p>
-                          <div className="flex gap-2 flex-wrap">
-                            {['숏','단발','미디움','롱'].map(l => (
-                              <button key={l} type="button" onClick={() => setCutLen(l)}
-                                className="px-4 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white text-gray-600 hover:border-accent transition">{l}</button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <button onClick={() => setCutLen('')} className="text-xs text-accent font-semibold mb-2 block">‹ {cutLen} 변경</button>
-                          <div className="flex flex-wrap gap-2">{(CUT_FEMALE[cutLen]||[]).map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>
-                        </div>
-                      ))}
+                      {k === 'cut' && (gender === 'male' ? <div className="flex flex-wrap gap-2">{CUT_MALE.map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>
+                        : !cutLen ? <div><p className="text-xs text-gray-400 mb-2">기장 선택</p><div className="flex gap-2 flex-wrap">{['숏','단발','미디움','롱'].map(l => <button key={l} type="button" onClick={() => setCutLen(l)} className="px-4 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white text-gray-600 hover:border-accent transition">{l}</button>)}</div></div>
+                        : <div><button onClick={() => setCutLen('')} className="text-xs text-accent font-semibold mb-2 block">‹ {cutLen} 변경</button><div className="flex flex-wrap gap-2">{(CUT_FEMALE[cutLen]||[]).map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div></div>)}
                       {k === 'perm' && <div className="flex flex-wrap gap-2">{(gender==='male'?PERM_MALE:PERM_FEMALE).map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>}
-                      {k === 'color' && (
-                        <div className="space-y-3">
-                          {Object.entries(COLOR_GROUPS).map(([grp, items]) => (
-                            <div key={grp}>
-                              <p className="text-xs text-gray-400 font-semibold mb-1.5">{grp}</p>
-                              <div className="flex flex-wrap gap-2">{items.map(t => <Chip key={t} label={t} active={(colorTags[grp]||[]).includes(t)} onClick={() => toggleColorTag(grp, t)} />)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {k === 'color' && <div className="space-y-3">{Object.entries(COLOR_GROUPS).map(([grp, items]) => <div key={grp}><p className="text-xs text-gray-400 font-semibold mb-1.5">{grp}</p><div className="flex flex-wrap gap-2">{items.map(t => <Chip key={t} label={t} active={(colorTags[grp]||[]).includes(t)} onClick={() => toggleColorTag(grp, t)} />)}</div></div>)}</div>}
                       {k === 'clinic' && <div className="flex flex-wrap gap-2">{CLINIC_LIST.map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>}
                       {k === 'scalp' && <div className="flex flex-wrap gap-2">{SCALP_LIST.map(t => <Chip key={t} label={t} active={curTags.includes(t)} onClick={() => toggleTag(k, t)} />)}</div>}
                       {myStyles.length > 0 && (
                         <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
                           {myStyles.map((s: string, i: number) => (
                             <div key={i} className="flex">
-                              <button type="button" onClick={() => toggleTag(k, s)}
-                                className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border-y border-l transition ${curTags.includes(s)?'bg-accent text-white border-accent':'bg-amber-50 text-amber-700 border-amber-300'}`}>⭐ {s}</button>
-                              <button type="button" onClick={() => deleteMyStyle(k, i)}
-                                className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs hover:bg-red-50 hover:text-red-400">×</button>
+                              <button type="button" onClick={() => toggleTag(k, s)} className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border-y border-l transition ${curTags.includes(s)?'bg-accent text-white border-accent':'bg-amber-50 text-amber-700 border-amber-300'}`}>⭐ {s}</button>
+                              <button type="button" onClick={() => deleteMyStyle(k, i)} className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs hover:bg-red-50 hover:text-red-400">×</button>
                             </div>
                           ))}
                         </div>
                       )}
                       <div className="flex gap-2">
-                        <input value={svcInput[k]||''} onChange={e => setSvcInput(prev=>({...prev,[k]:e.target.value}))}
-                          onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveMyStyle(k)}}}
-                          className="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-xs outline-none bg-amber-50/50 focus:border-accent"
-                          placeholder="직접 입력 후 저장★ 누르면 내 스타일로 저장돼요" />
+                        <input value={svcInput[k]||''} onChange={e => setSvcInput(prev=>({...prev,[k]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveMyStyle(k)}}} className="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-xs outline-none bg-amber-50/50 focus:border-accent" placeholder="직접 입력 후 저장★ 누르면 내 스타일로 저장돼요" />
                         <button type="button" onClick={()=>saveMyStyle(k)} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-bold whitespace-nowrap">저장 ⭐</button>
                       </div>
                     </div>
@@ -383,106 +314,59 @@ export default function NewService() {
             })}
             <div className="px-4 py-3 flex items-center gap-4 bg-white">
               <span className="text-sm text-gray-600 flex-shrink-0">손상도 <span className="text-xs text-gray-400">(선택)</span></span>
-              <div className="flex gap-2 ml-auto">
-                {['상','중','하'].map(l => (
-                  <button key={l} type="button" onClick={()=>setDmgLevel(dmgLevel===l?'':l)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${dmgLevel===l?'bg-primary text-white border-primary':'bg-white text-gray-500 border-gray-300'}`}>{l}</button>
-                ))}
-              </div>
+              <div className="flex gap-2 ml-auto">{['상','중','하'].map(l => <button key={l} type="button" onClick={()=>setDmgLevel(dmgLevel===l?'':l)} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${dmgLevel===l?'bg-primary text-white border-primary':'bg-white text-gray-500 border-gray-300'}`}>{l}</button>)}</div>
             </div>
-            <div className="px-4 pb-3 bg-white">
-              <input className="input text-sm" value={dmgPart} onChange={e=>setDmgPart(e.target.value)} placeholder="부분 손상도 직접 입력 (예: 끝머리 20cm 가량)" />
-            </div>
+            <div className="px-4 pb-3 bg-white"><input className="input text-sm" value={dmgPart} onChange={e=>setDmgPart(e.target.value)} placeholder="부분 손상도 직접 입력 (예: 끝머리 20cm 가량)" /></div>
           </div>
         </div>
 
         <div className="card">
           <h3 className="font-semibold mb-3">📸 시술 사진 <span className="text-xs text-gray-400 font-normal">(선택 · 최대 5장)</span></h3>
           <div className="flex gap-3 flex-wrap">
-            {photos.map((p, i) => (
-              <div key={i} className="relative">
-                <img src={p.preview} className="w-20 h-20 rounded-xl object-cover border border-gray-200" alt="" />
-                <button type="button" onClick={()=>removePhoto(i)} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center font-bold shadow">×</button>
-              </div>
-            ))}
-            {photos.length < 5 && (
-              <button type="button" onClick={()=>fileInputRef.current?.click()}
-                className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center gap-1 hover:border-accent hover:bg-amber-50 transition">
-                <span className="text-2xl">📷</span>
-                <span className="text-xs text-gray-400 font-medium">사진 추가</span>
-              </button>
-            )}
+            {photos.map((p, i) => <div key={i} className="relative"><img src={p.preview} className="w-20 h-20 rounded-xl object-cover border border-gray-200" alt="" /><button type="button" onClick={()=>removePhoto(i)} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center font-bold shadow">×</button></div>)}
+            {photos.length < 5 && <button type="button" onClick={()=>fileInputRef.current?.click()} className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center gap-1 hover:border-accent hover:bg-amber-50 transition"><span className="text-2xl">📷</span><span className="text-xs text-gray-400 font-medium">사진 추가</span></button>}
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
         </div>
 
         <div className="card p-0 overflow-hidden">
           <div className="flex border-b border-gray-100">
-            {noteTabs.map(t => (
-              <button key={t.k} onClick={()=>setNoteTab(t.k)}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition ${noteTab===t.k?'text-primary border-primary':'text-gray-400 border-transparent'}`}>{t.l}</button>
-            ))}
+            {noteTabs.map(t => <button key={t.k} onClick={()=>setNoteTab(t.k)} className={`flex-1 py-3 text-xs font-semibold border-b-2 transition ${noteTab===t.k?'text-primary border-primary':'text-gray-400 border-transparent'}`}>{t.l}</button>)}
           </div>
           <div className="p-4 space-y-3">
             {(myPhrases[noteTab]||[]).length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {(myPhrases[noteTab]||[]).map((p: string, i: number) => (
-                  <div key={i} className="flex">
-                    <button type="button" onClick={()=>addPhrase(noteTab, p)}
-                      className="px-3 py-1.5 rounded-l-full text-xs font-semibold bg-amber-50 text-amber-700 border-y border-l border-amber-300 hover:bg-amber-100 max-w-[200px] truncate">⭐ {p}</button>
-                    <button type="button" onClick={()=>deleteMyPhrase(noteTab, i)}
-                      className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs">×</button>
+                  <div key={i} className="flex max-w-full">
+                    <button type="button" onClick={()=>addPhrase(noteTab, p)} className="px-3 py-1.5 rounded-l-full text-xs font-semibold bg-amber-50 text-amber-700 border-y border-l border-amber-300 hover:bg-amber-100 truncate max-w-[180px]">⭐ {p}</button>
+                    <button type="button" onClick={()=>deleteMyPhrase(noteTab, i)} className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs flex-shrink-0">×</button>
                   </div>
                 ))}
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {(DEFAULT_PHRASES[noteTab]||[]).map((p: string) => (
-                <button key={p} type="button" onClick={()=>addPhrase(noteTab, p)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition">{p}</button>
-              ))}
+              {(DEFAULT_PHRASES[noteTab]||[]).map((p: string) => <button key={p} type="button" onClick={()=>addPhrase(noteTab, p)} className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition">{p}</button>)}
             </div>
             <div className="flex gap-2">
-              <input value={noteInput[noteTab]||''} onChange={e=>setNoteInput(prev=>({...prev,[noteTab]:e.target.value}))}
-                onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePhrase(noteTab)}}}
-                className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-xs outline-none bg-amber-50/50 focus:border-accent"
-                placeholder="직접 입력 후 저장★ 누르면 내 문구로 저장돼요" />
+              <input value={noteInput[noteTab]||''} onChange={e=>setNoteInput(prev=>({...prev,[noteTab]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePhrase(noteTab)}}} className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-xs outline-none bg-amber-50/50 focus:border-accent" placeholder="직접 입력 후 저장★ 누르면 내 문구로 저장돼요" />
               <button type="button" onClick={()=>savePhrase(noteTab)} className="px-3 py-2 bg-accent text-white rounded-lg text-xs font-bold whitespace-nowrap">저장 ⭐</button>
             </div>
-            <textarea value={noteVal[noteTab]||''} onChange={e=>setNoteVal(prev=>({...prev,[noteTab]:e.target.value}))}
-              rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none outline-none focus:border-accent"
-              placeholder="위 태그를 클릭하거나 직접 입력하세요" />
+            <textarea value={noteVal[noteTab]||''} onChange={e=>setNoteVal(prev=>({...prev,[noteTab]:e.target.value}))} rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none outline-none focus:border-accent" placeholder="위 태그를 클릭하거나 직접 입력하세요" />
           </div>
         </div>
 
         <div className="card p-0 overflow-hidden divide-y divide-gray-100">
           <div className="px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">🔒 비밀 레시피</div>
-              <div className="text-xs text-gray-400 mt-0.5">나만 보는 레시피</div>
-            </div>
-            <button onClick={()=>setShowRecipe(!showRecipe)} className={`w-11 h-6 rounded-full transition-colors relative ${showRecipe?'bg-primary':'bg-gray-200'}`}>
-              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${showRecipe?'left-5':'left-0.5'}`} />
-            </button>
+            <div><div className="text-sm font-semibold">🔒 비밀 레시피</div><div className="text-xs text-gray-400 mt-0.5">나만 보는 레시피</div></div>
+            <button onClick={()=>setShowRecipe(!showRecipe)} className={`w-11 h-6 rounded-full transition-colors relative ${showRecipe?'bg-primary':'bg-gray-200'}`}><div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${showRecipe?'left-5':'left-0.5'}`} /></button>
           </div>
-          {showRecipe && (
-            <div className="px-4 pb-3">
-              <textarea className="input text-sm mt-2 resize-none" rows={2} value={recipe} onChange={e=>setRecipe(e.target.value)} placeholder="예) 밀본 7.60 × 3% 산화제 1:1, 방치 25분" />
-            </div>
-          )}
+          {showRecipe && <div className="px-4 pb-3"><textarea className="input text-sm mt-2 resize-none" rows={2} value={recipe} onChange={e=>setRecipe(e.target.value)} placeholder="예) 밀본 7.60 × 3% 산화제 1:1, 방치 25분" /></div>}
           <button type="button" onClick={()=>setShowMemo(!showMemo)} className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-gray-50 transition">
             <span className="text-base">📌</span>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-green-700">고객 메모</div>
-              <div className="text-xs text-gray-400">다음 시술 참고 · 고객 비공개</div>
-            </div>
+            <div className="flex-1"><div className="text-sm font-semibold text-green-700">고객 메모</div><div className="text-xs text-gray-400">다음 시술 참고 · 고객 비공개</div></div>
             <span className="text-gray-400 text-sm">{showMemo?'∧':'∨'}</span>
           </button>
-          {showMemo && (
-            <div className="px-4 pb-3">
-              <textarea className="input text-sm resize-none" rows={2} value={custMemo} onChange={e=>setCustMemo(e.target.value)} placeholder="예) 다음엔 파마 강도 조금 세게, 두피 민감" />
-            </div>
-          )}
+          {showMemo && <div className="px-4 pb-3"><textarea className="input text-sm resize-none" rows={2} value={custMemo} onChange={e=>setCustMemo(e.target.value)} placeholder="예) 다음엔 파마 강도 조금 세게, 두피 민감" /></div>}
         </div>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
@@ -493,26 +377,11 @@ export default function NewService() {
 }
 
 function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${active?'bg-primary text-white border-primary':'bg-white text-gray-600 border-gray-200 hover:border-accent'}`}>
-      {label}
-    </button>
-  )
+  return <button type="button" onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${active?'bg-primary text-white border-primary':'bg-white text-gray-600 border-gray-200 hover:border-accent'}`}>{label}</button>
 }
 function CRow({ label, val }: { label: string; val: string }) {
-  return (
-    <div className="flex justify-between py-2">
-      <span className="text-gray-400 flex-shrink-0 mr-4">{label}</span>
-      <span className="font-medium text-right">{val || '-'}</span>
-    </div>
-  )
+  return <div className="flex justify-between py-2"><span className="text-gray-400 flex-shrink-0 mr-4">{label}</span><span className="font-medium text-right">{val || '-'}</span></div>
 }
 function CRowLong({ label, val }: { label: string; val: string }) {
-  return (
-    <div className="py-2">
-      <span className="text-gray-400 text-xs block mb-1">{label}</span>
-      <p className="font-medium text-sm leading-relaxed whitespace-pre-wrap">{val}</p>
-    </div>
-  )
+  return <div className="py-2"><span className="text-gray-400 text-xs block mb-1">{label}</span><p className="font-medium text-sm leading-relaxed whitespace-pre-wrap">{val}</p></div>
 }
