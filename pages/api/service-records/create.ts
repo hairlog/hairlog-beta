@@ -4,7 +4,7 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
   const { designer_id, customer_name, customer_phone, service_date, service_type,
-    gender, damage_level, damage_part, care_method, caution, next_service, memo, secret_recipe } = req.body
+    gender, damage_level, damage_part, care_method, caution, next_service, memo, cust_memo, secret_recipe, photo_urls } = req.body
 
   const { data: designer } = await supabaseAdmin.from('designers').select('*').eq('id', designer_id).single()
 
@@ -37,8 +37,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     care_method: care_method || null,
     caution: caution || null,
     next_service: next_service || null,
-    memo,
-    secret_recipe,
+    memo: memo || null,
+    cust_memo: cust_memo || null,
+    secret_recipe: secret_recipe || null,
+    photo_urls: photo_urls || null,
     sms_sent: false
   }).select().single()
   if (rErr) return res.status(500).json({ error: '시술 기록 저장 실패' })
@@ -48,20 +50,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const designerInfo = designer
       ? `\n\n담당: ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}${designer.business_hours ? `\n영업시간: ${designer.business_hours}` : ''}${designer.day_off ? `\n휴무일: ${designer.day_off}` : ''}`
       : ''
-    const naverLink = designer?.naver_link ? `\n\n📅 예약: ${designer.naver_link}` : ''
     const messageParts = [
-      `[헤어로그] 시술 내역 안내`,
-      ``,
-      `${customer_name}님, 오늘 시술 감사합니다 😊`,
-      ``,
-      `📋 시술 내역`,
-      `날짜: ${service_date}`,
-      `시술: ${service_type}`,
+      `[헤어로그] 시술 내역 안내`, ``,
+      `${customer_name}님, 오늘 시술 감사합니다 😊`, ``,
+      `📋 시술 내역`, `날짜: ${service_date}`, `시술: ${service_type}`,
     ]
     if (care_method) messageParts.push(`손질법: ${care_method}`)
     if (caution) messageParts.push(`주의사항: ${caution}`)
     if (next_service) messageParts.push(`다음 시술: ${next_service}`)
-    const message = messageParts.join('\n') + designerInfo + naverLink
+    const message = messageParts.join('\n') + designerInfo
+
     const solapi = require('solapi')
     const SolapiMessageService = solapi.SolapiMessageService || solapi.default || solapi
     const messageService = new SolapiMessageService(process.env.SOLAPI_API_KEY, process.env.SOLAPI_API_SECRET)
