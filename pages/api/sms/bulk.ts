@@ -17,8 +17,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const position = designer?.position ? ` ${designer.position}` : ''
     const designerSuffix = designer
-      ? `\n\n${designer.salon_name || ''}${position} ${designer.name}${designer.naver_link ? `\n📅 예약: ${designer.naver_link}` : ''}`
-      : ''
+      ? `\n\n${designer.salon_name || ''}${position} ${designer.name || ''}` : ''
+    const bookingLink = designer?.naver_link ? `\n📅 예약: ${designer.naver_link}` : ''
+    const kakaoLink = !designer?.naver_link && designer?.kakao_link ? `\n💬 카카오: ${designer.kakao_link}` : ''
+
+    const now = new Date().toISOString()
 
     for (const c of customers) {
       const phone = c.phone.replace(/-/g, '')
@@ -27,12 +30,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const found = messages.find((m: any) => m.customer_id === c.id)
         if (found) baseMsg = found.message
       }
-      const fullMessage = baseMsg + designerSuffix
+      const fullMessage = baseMsg + designerSuffix + bookingLink + kakaoLink
       try {
         await messageService.sendOne({ to: phone, from: '07080805174', text: fullMessage })
         await supabaseAdmin.from('sms_logs').insert({
           designer_id, customer_id: c.id, phone: c.phone, message: fullMessage, send_type: 'revisit'
         })
+        await supabaseAdmin.from('customers').update({ last_revisit_sms_at: now }).eq('id', c.id)
       } catch (e) { console.error('SMS 오류:', c.phone, e) }
     }
     return res.status(200).json({ success: true })
