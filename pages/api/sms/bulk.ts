@@ -11,16 +11,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data: designer } = await supabaseAdmin.from('designers').select('*').eq('id', designer_id).single()
 
   try {
-    const SolapiMessageService = require('solapi').default
+    const solapi = require('solapi')
+    const SolapiMessageService = solapi.SolapiMessageService || solapi.default || solapi
     const messageService = new SolapiMessageService(process.env.SOLAPI_API_KEY, process.env.SOLAPI_API_SECRET)
-    const designerSuffix = designer ? `\n\n- ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}` : ''
+
+    const designerSuffix = designer
+      ? `\n\n- ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}${designer.naver_link ? `\n📅 예약: ${designer.naver_link}` : ''}`
+      : ''
     const fullMessage = message + designerSuffix
 
     for (const c of customers) {
       const phone = c.phone.replace(/-/g, '')
       try {
-        await messageService.sendOne({ to: phone, from: '01000000000', text: fullMessage })
-        await supabaseAdmin.from('sms_logs').insert({ designer_id, customer_id: c.id, phone: c.phone, message: fullMessage, send_type: 'bulk' })
+        await messageService.sendOne({ to: phone, from: '07080805174', text: fullMessage })
+        await supabaseAdmin.from('sms_logs').insert({
+          designer_id, customer_id: c.id, phone: c.phone, message: fullMessage, send_type: 'bulk'
+        })
       } catch (e) { console.error('SMS 오류:', c.phone, e) }
     }
     return res.status(200).json({ success: true })
