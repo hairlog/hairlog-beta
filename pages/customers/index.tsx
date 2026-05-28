@@ -43,7 +43,7 @@ export default function Customers() {
       .from('customers')
       .select('*')
       .eq('designer_id', designer_id)
-      .order('last_visit_at', { ascending: false, nullsLast: true })
+      .order('last_visit_at', { ascending: false })
     setCustomers(data || [])
     setLoading(false)
   }
