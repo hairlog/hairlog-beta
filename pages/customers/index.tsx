@@ -2,144 +2,200 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
-import Link from 'next/link'
 
-type VisitStatus = 'recent' | 'warn' | 'danger' | 'none'
-
-function getVisitStatus(last_visit_at: string | null): VisitStatus {
-  if (!last_visit_at) return 'none'
-  const days = Math.floor((Date.now() - new Date(last_visit_at).getTime()) / 86400000)
-  if (days >= 60) return 'danger'
-  if (days >= 30) return 'warn'
-  return 'recent'
-}
-
-const STATUS_META: Record<VisitStatus, { dot: string; badge: string; label: string }> = {
-  recent: { dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700',  label: '최근방문' },
-  warn:   { dot: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700', label: '방문권장' },
-  danger: { dot: 'bg-red-500',    badge: 'bg-red-100 text-red-600',       label: '장기미방문' },
-  none:   { dot: 'bg-gray-300',   badge: 'bg-gray-100 text-gray-500',     label: '방문기록없음' },
-}
-
-export default function Customers() {
+export default function CustomerDetail() {
   const router = useRouter()
+  const { id } = router.query
   const [session, setSession] = useState<any>(null)
-  const [customers, setCustomers] = useState<any[]>([])
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [genderFilter, setGenderFilter] = useState<'all' | 'female' | 'male'>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'recent' | 'warn' | 'danger'>('all')
+  const [customer, setCustomer] = useState<any>(null)
+  const [records, setRecords] = useState<any[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [photoModal, setPhotoModal] = useState<string[] | null>(null)
+  const [editingMemo, setEditingMemo] = useState(false)
+  const [memoVal, setMemoVal] = useState('')
 
   useEffect(() => {
     const s = getSession()
-    if (!s) { router.push('/'); return }
+    if (!s) { router.replace('/'); return }
     setSession(s)
-    loadCustomers(s.designer_id)
   }, [])
 
-  async function loadCustomers(designer_id: string) {
-    setLoading(true)
-    const { data } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('designer_id', designer_id)
-      .order('last_visit_at', { ascending: false })
-    setCustomers(data || [])
-    setLoading(false)
+  useEffect(() => {
+    if (id) loadData()
+  }, [id])
+
+  async function loadData() {
+    const { data: c } = await supabase.from('customers').select('*').eq('id', id).single()
+    setCustomer(c)
+    setMemoVal(c?.designer_memo || '')
+    const { data: r } = await supabase.from('service_records').select('*').eq('customer_id', id).order('service_date', { ascending: false })
+    setRecords(r || [])
   }
 
-  const filtered = customers.filter(c => {
-    const q = search.trim()
-    const matchSearch = !q
-      || c.name?.includes(q)
-      || c.phone?.replace(/-/g, '').slice(-4) === q
-      || c.phone?.includes(q)
-    const matchGender = genderFilter === 'all' || c.gender === genderFilter
-    const matchStatus = statusFilter === 'all' || getVisitStatus(c.last_visit_at) === statusFilter
-    return matchSearch && matchGender && matchStatus
-  })
+  async function saveMemo() {
+    await supabase.from('customers').update({ designer_memo: memoVal }).eq('id', id)
+    setCustomer((prev: any) => ({ ...prev, designer_memo: memoVal }))
+    setEditingMemo(false)
+  }
 
-  if (!session) return null
+  if (!session || !customer) return null
+
+  const daysAgo = customer.last_visit_at
+    ? Math.floor((Date.now() - new Date(customer.last_visit_at).getTime()) / 86400000)
+    : null
 
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
       <div className="bg-white shadow-sm px-4 py-4 flex items-center gap-3">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-500 text-lg">←</button>
-        <h2 className="text-lg font-semibold">고객 목록</h2>
-        <span className="ml-auto text-sm text-gray-400 font-medium">총 {customers.length}명</span>
+        <button onClick={() => router.push('/customers')} className="text-gray-500 text-lg">←</button>
+        <h2 className="text-lg font-semibold">{customer.name} 고객 이력</h2>
+        <button onClick={() => router.push('/revisit')} className="ml-auto text-xs font-semibold text-accent">알림 보내기 →</button>
       </div>
 
-      <div className="bg-white border-b border-gray-100 px-4 py-3">
-        <input
-          className="input text-sm"
-          placeholder="🔍 이름 또는 뒷번호(4자리) 검색"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-      </div>
-
-      <div className="bg-white border-b border-gray-100 px-4 pb-3 pt-2 space-y-2">
-        <div className="flex gap-2">
-          {(['all', 'female', 'male'] as const).map(v => (
-            <button key={v} onClick={() => setGenderFilter(v)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition
-                ${genderFilter === v ? 'bg-primary text-white border-primary' : 'bg-white text-gray-500 border-gray-300'}`}>
-              {v === 'all' ? '전체' : v === 'female' ? '여성 👩' : '남성 👨'}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {(['all', 'recent', 'warn', 'danger'] as const).map(v => (
-            <button key={v} onClick={() => setStatusFilter(v)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition
-                ${statusFilter === v ? 'bg-accent text-white border-accent' : 'bg-white text-gray-500 border-gray-300'}`}>
-              {v === 'all' ? '전체' : v === 'recent' ? '🟢 최근방문' : v === 'warn' ? '🟡 방문권장' : '🔴 장기미방문'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 py-4 max-w-lg mx-auto">
-        {loading ? (
-          <p className="text-center text-gray-400 py-10">불러오는 중...</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-10">해당하는 고객이 없어요</p>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map(c => {
-              const status = getVisitStatus(c.last_visit_at)
-              const meta = STATUS_META[status]
-              const last4 = c.phone?.replace(/-/g, '').slice(-4)
-              const daysAgo = c.last_visit_at
-                ? Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000)
-                : null
-              return (
-                <Link key={c.id} href={`/customers/${c.id}`}
-                  className="card flex items-center gap-3 hover:shadow-md transition cursor-pointer block">
-                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.dot}`} />
-                  <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-base flex-shrink-0">
-                    {c.name?.[0] || '?'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-semibold text-sm">{c.name}</span>
-                      {last4 && <span className="text-xs text-gray-400">({last4})</span>}
-                      {c.gender === 'female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-1.5 py-0.5">여</span>}
-                      {c.gender === 'male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-1.5 py-0.5">남</span>}
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {daysAgo !== null ? `${daysAgo}일 전 방문` : '방문 기록 없음'}
-                    </p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${meta.badge}`}>
-                    {meta.label}
-                  </span>
-                </Link>
-              )
-            })}
+      <div className="px-4 py-5 max-w-lg mx-auto space-y-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center font-bold text-xl flex-shrink-0">
+              {customer.name?.[0]}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg">{customer.name}</span>
+                <span className="text-sm text-gray-400">({customer.phone?.slice(-4)})</span>
+                {customer.gender === 'female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-2 py-0.5">여성</span>}
+                {customer.gender === 'male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-2 py-0.5">남성</span>}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{customer.phone}</p>
+            </div>
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-gray-50 rounded-xl p-2.5 text-center">
+              <p className="text-xs text-gray-400">총 방문</p>
+              <p className="font-bold text-primary text-lg">{records.length}회</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-2.5 text-center">
+              <p className="text-xs text-gray-400">마지막 방문</p>
+              <p className="font-bold text-primary">{daysAgo !== null ? `${daysAgo}일 전` : '-'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📌</span>
+              <span className="text-sm font-bold text-green-700">디자이너 메모</span>
+              <span className="text-xs text-gray-400 bg-white rounded-full px-2 py-0.5">고객 비공개</span>
+            </div>
+            <button onClick={() => setEditingMemo(!editingMemo)} className="text-xs text-accent font-semibold">수정 ✏️</button>
+          </div>
+          {editingMemo ? (
+            <div>
+              <textarea value={memoVal} onChange={e => setMemoVal(e.target.value)} rows={3}
+                className="w-full border border-green-300 rounded-xl px-3 py-2 text-sm outline-none resize-none bg-white focus:border-green-500" />
+              <div className="flex gap-2 mt-2">
+                <button onClick={saveMemo} className="flex-1 py-2 bg-green-600 text-white rounded-xl text-xs font-bold">저장</button>
+                <button onClick={() => { setEditingMemo(false); setMemoVal(customer.designer_memo || '') }}
+                  className="flex-1 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-500">취소</button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {customer.designer_memo || <span className="text-gray-400 italic">메모가 없어요. 수정 버튼으로 추가해보세요.</span>}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h3 className="font-semibold text-gray-700 mb-3">전체 시술 이력 <span className="text-gray-400 font-normal">{records.length}건</span></h3>
+          {records.length === 0 ? (
+            <div className="bg-white rounded-2xl p-8 text-center text-gray-400 text-sm shadow-sm">시술 기록이 없어요</div>
+          ) : (
+            <div className="space-y-3">
+              {records.map((r, idx) => {
+                const isOpen = expanded === r.id
+                const isLatest = idx === 0
+                return (
+                  <div key={r.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 ${isLatest ? 'border-accent' : 'border-gray-200'}`}>
+                    <div className="px-4 py-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-400">{r.service_date}</span>
+                        {isLatest && <span className="text-xs bg-accent text-white rounded-full px-2 py-0.5">최근</span>}
+                      </div>
+                      <div className="font-bold text-base mb-2">{r.service_type}</div>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {r.damage_level && <span className="text-xs bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 font-medium">손상도 {r.damage_level}</span>}
+                        {r.gender === 'female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-2 py-0.5">여</span>}
+                        {r.gender === 'male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-2 py-0.5">남</span>}
+                      </div>
+                      {(r.care_method || r.caution || r.next_service) && (
+                        <button onClick={() => setExpanded(isOpen ? null : r.id)} className="text-xs text-accent font-medium">
+                          {isOpen ? '▲ 접기' : '▼ 손질법·주의사항 보기'}
+                        </button>
+                      )}
+                    </div>
+
+                    {isOpen && (
+                      <div className="px-4 pb-3 border-t border-gray-50 space-y-2">
+                        {r.care_method && <div className="pt-2"><span className="text-xs text-gray-400 block">손질법</span><p className="text-sm text-gray-700 leading-relaxed mt-0.5">{r.care_method}</p></div>}
+                        {r.caution && <div><span className="text-xs text-gray-400 block">주의사항</span><p className="text-sm text-gray-700 leading-relaxed mt-0.5">{r.caution}</p></div>}
+                        {r.next_service && <div><span className="text-xs text-gray-400 block">다음 시술 권장</span><p className="text-sm text-gray-700 mt-0.5">{r.next_service}</p></div>}
+                        {r.memo && <div><span className="text-xs text-gray-400 block">메모</span><p className="text-sm text-gray-700 leading-relaxed mt-0.5">{r.memo}</p></div>}
+                      </div>
+                    )}
+
+                    {r.secret_recipe && (
+                      <div className="bg-gray-900 px-4 py-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-accent">🔒 비밀 레시피</span>
+                          <span className="text-xs text-gray-500">디자이너 전용</span>
+                        </div>
+                        <p className="text-sm text-gray-200 font-mono leading-relaxed">{r.secret_recipe}</p>
+                      </div>
+                    )}
+
+                    {r.cust_memo && (
+                      <div className="bg-green-50 px-4 py-3 border-t border-green-100">
+                        <span className="text-xs font-bold text-green-700 block mb-1">📌 메모 <span className="font-normal text-gray-400">(고객 비공개)</span></span>
+                        <p className="text-sm text-gray-700 leading-relaxed">{r.cust_memo}</p>
+                      </div>
+                    )}
+
+                    {r.photo_urls && r.photo_urls.length > 0 && (
+                      <div className="px-4 pb-3 border-t border-gray-50 pt-2">
+                        <span className="text-xs text-gray-400 block mb-2">📸 시술 사진</span>
+                        <div className="flex gap-2 flex-wrap">
+                          {r.photo_urls.map((url: string, i: number) => (
+                            <img key={i} src={url} alt="" className="w-16 h-16 rounded-xl object-cover cursor-pointer border border-gray-200 hover:opacity-90"
+                              onClick={() => setPhotoModal(r.photo_urls)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="px-4 py-2 border-t border-gray-50">
+                      <span className="text-xs text-gray-400">{r.sms_sent ? '✅ 문자 발송됨' : '문자 미발송'}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
+
+      {photoModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={() => setPhotoModal(null)}>
+          <div className="flex justify-end p-4">
+            <button className="text-white text-2xl font-bold">✕</button>
+          </div>
+          <div className="flex-1 overflow-x-auto flex items-center gap-4 px-4">
+            {photoModal.map((url, i) => (
+              <img key={i} src={url} alt="" className="max-h-full max-w-xs rounded-xl object-contain" onClick={e => e.stopPropagation()} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
