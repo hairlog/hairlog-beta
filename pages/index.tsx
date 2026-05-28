@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { setSession } from '../lib/auth'
+import { getSession, setSession } from '../lib/auth'
 
 export default function Login() {
   const router = useRouter()
@@ -8,12 +8,17 @@ export default function Login() {
   const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const s = getSession()
+    if (s) { router.replace('/dashboard'); return }
+    setLoading(false)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login'
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -24,8 +29,14 @@ export default function Login() {
     setLoading(false)
     if (!res.ok) { setError(data.error || '오류가 발생했습니다'); return }
     setSession(data.user)
-    router.push('/dashboard')
+    router.replace('/dashboard')
   }
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-gray-400 text-sm">불러오는 중...</p>
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gray-50">
