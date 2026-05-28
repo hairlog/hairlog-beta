@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { getSession } from '../lib/auth'
-import { supabase } from '../lib/supabase'
+import { getSession } from '../../lib/auth'
+import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
 export default function Customers() {
