@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
-  const { designer_id, customer_ids, message } = req.body
+  const { designer_id, customer_ids, messages, message } = req.body
 
   const { data: customers } = await supabaseAdmin.from('customers').select('*').in('id', customer_ids)
   if (!customers) return res.status(400).json({ error: '고객 없음' })
@@ -15,17 +15,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const SolapiMessageService = solapi.SolapiMessageService || solapi.default || solapi
     const messageService = new SolapiMessageService(process.env.SOLAPI_API_KEY, process.env.SOLAPI_API_SECRET)
 
+    const position = designer?.position ? ` ${designer.position}` : ''
     const designerSuffix = designer
-      ? `\n\n- ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}${designer.naver_link ? `\n📅 예약: ${designer.naver_link}` : ''}`
+      ? `\n\n${designer.salon_name || ''}${position} ${designer.name}${designer.naver_link ? `\n📅 예약: ${designer.naver_link}` : ''}`
       : ''
-    const fullMessage = message + designerSuffix
 
     for (const c of customers) {
       const phone = c.phone.replace(/-/g, '')
+      let baseMsg = message || ''
+      if (messages) {
+        const found = messages.find((m: any) => m.customer_id === c.id)
+        if (found) baseMsg = found.message
+      }
+      const fullMessage = baseMsg + designerSuffix
       try {
         await messageService.sendOne({ to: phone, from: '07080805174', text: fullMessage })
         await supabaseAdmin.from('sms_logs').insert({
-          designer_id, customer_id: c.id, phone: c.phone, message: fullMessage, send_type: 'bulk'
+          designer_id, customer_id: c.id, phone: c.phone, message: fullMessage, send_type: 'revisit'
         })
       } catch (e) { console.error('SMS 오류:', c.phone, e) }
     }
