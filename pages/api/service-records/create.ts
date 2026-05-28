@@ -4,7 +4,8 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
   const { designer_id, customer_name, customer_phone, service_date, service_type,
-    gender, damage_level, damage_part, care_method, caution, next_service, memo, cust_memo, secret_recipe, photo_urls } = req.body
+    gender, damage_level, damage_part, care_method, caution, next_service,
+    memo, cust_memo, secret_recipe, photo_urls } = req.body
 
   const { data: designer } = await supabaseAdmin.from('designers').select('*').eq('id', designer_id).single()
 
@@ -47,18 +48,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const phone = customer_phone.replace(/-/g, '')
-    const designerInfo = designer
-      ? `\n\n담당: ${designer.name}${designer.salon_name ? ` (${designer.salon_name})` : ''}${designer.business_hours ? `\n영업시간: ${designer.business_hours}` : ''}${designer.day_off ? `\n휴무일: ${designer.day_off}` : ''}`
+    const position = designer?.position ? ` ${designer.position}` : ''
+    const designerLine = designer
+      ? `\n\n담당: ${designer.salon_name || ''}${position} ${designer.name || ''}`
       : ''
-    const messageParts = [
+    const hoursLine = designer?.business_hours ? `\n영업시간: ${designer.business_hours}` : ''
+    const dayOffLine = designer?.day_off ? `\n정기휴무: ${designer.day_off}` : ''
+    const tempLine = designer?.temp_holidays ? `\n임시휴무: ${designer.temp_holidays}` : ''
+
+    const parts = [
       `[헤어로그] 시술 내역 안내`, ``,
       `${customer_name}님, 오늘 시술 감사합니다 😊`, ``,
-      `📋 시술 내역`, `날짜: ${service_date}`, `시술: ${service_type}`,
+      `📋 시술 내역`,
+      `날짜: ${service_date}`,
+      `시술: ${service_type}`,
     ]
-    if (care_method) messageParts.push(`손질법: ${care_method}`)
-    if (caution) messageParts.push(`주의사항: ${caution}`)
-    if (next_service) messageParts.push(`다음 시술: ${next_service}`)
-    const message = messageParts.join('\n') + designerInfo
+    if (care_method) parts.push(`손질법: ${care_method}`)
+    if (caution) parts.push(`주의사항: ${caution}`)
+    if (next_service) parts.push(`다음 시술: ${next_service}`)
+
+    const message = parts.join('\n') + designerLine + hoursLine + dayOffLine + tempLine
 
     const solapi = require('solapi')
     const SolapiMessageService = solapi.SolapiMessageService || solapi.default || solapi
