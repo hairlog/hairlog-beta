@@ -53,6 +53,9 @@ export default function Revisit() {
   const [statusFilter, setStatusFilter] = useState<'all'|'warn'|'danger'>('all')
   const [selected, setSelected] = useState<string[]>([])
   const [showMsgSetting, setShowMsgSetting] = useState(false)
+  const [showPeriodSetting, setShowPeriodSetting] = useState(false)
+  const [periodEdit, setPeriodEdit] = useState<Record<string,number>>(DEFAULT_PERIODS)
+  const [savingPeriod, setSavingPeriod] = useState(false)
   const [msgTab, setMsgTab] = useState('cut')
   const [msgTemplates, setMsgTemplates] = useState<Record<string, {warn:string;danger:string}>>(JSON.parse(JSON.stringify(DEFAULT_MSGS)))
   const [msgEdit, setMsgEdit] = useState<{warn:string;danger:string}>(DEFAULT_MSGS.cut)
@@ -69,6 +72,9 @@ export default function Revisit() {
     setLoading(true)
     const { data: d } = await supabase.from('designers').select('*').eq('id', designer_id).single()
     setDesigner(d)
+    if (d?.revisit_settings) {
+      setPeriodEdit({ ...DEFAULT_PERIODS, ...d.revisit_settings })
+    }
     if (d?.message_templates) {
       const merged = { ...JSON.parse(JSON.stringify(DEFAULT_MSGS)), ...d.message_templates }
       setMsgTemplates(merged)
@@ -113,6 +119,14 @@ export default function Revisit() {
   function switchMsgTab(k: string) {
     setMsgTab(k)
     setMsgEdit(msgTemplates[k] || DEFAULT_MSGS[k as keyof typeof DEFAULT_MSGS])
+  }
+
+  async function savePeriod() {
+    setSavingPeriod(true)
+    await supabase.from('designers').update({ revisit_settings: periodEdit }).eq('id', session.designer_id)
+    setDesigner((p: any) => ({ ...p, revisit_settings: periodEdit }))
+    setSavingPeriod(false)
+    alert('재방문 주기가 저장됐어요!')
   }
 
   async function saveMsgTemplate() {
@@ -192,6 +206,42 @@ export default function Revisit() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 재방문 주기 설정 */}
+        <div className="border border-zinc-100 rounded-xl overflow-hidden">
+          <button onClick={() => setShowPeriodSetting(!showPeriodSetting)}
+            className="w-full px-4 py-4 flex items-center justify-between text-left hover:bg-zinc-50 transition">
+            <div>
+              <p className="text-sm font-semibold text-zinc-900 tracking-tight">재방문 주기 설정</p>
+              <p className="text-xs text-zinc-400 mt-0.5">시술별 권장 재방문 일수 설정</p>
+            </div>
+            <ChevronDown size={16} className={'text-zinc-400 transition-transform ' + (showPeriodSetting ? 'rotate-180' : '')} />
+          </button>
+          {showPeriodSetting && (
+            <div className="border-t border-zinc-100 px-4 py-4 space-y-3">
+              {SVC_TABS.map(({ k, label }) => (
+                <div key={k} className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-700">{label}</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPeriodEdit(p => ({ ...p, [k]: Math.max(1, (p[k]||DEFAULT_PERIODS[k]) - 1) }))}
+                      className="w-8 h-8 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 transition text-lg font-medium">−</button>
+                    <div className="w-16 text-center">
+                      <span className="text-sm font-semibold text-zinc-900 tracking-tight">{periodEdit[k] || DEFAULT_PERIODS[k]}</span>
+                      <span className="text-xs text-zinc-400 ml-1">일</span>
+                    </div>
+                    <button type="button" onClick={() => setPeriodEdit(p => ({ ...p, [k]: (p[k]||DEFAULT_PERIODS[k]) + 1 }))}
+                      className="w-8 h-8 rounded-lg border border-zinc-200 flex items-center justify-center text-zinc-500 hover:bg-zinc-50 transition text-lg font-medium">+</button>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-zinc-400 pt-1">설정한 일수가 지나면 방문권장, 2배가 지나면 장기미방문으로 표시됩니다</p>
+              <button onClick={savePeriod} disabled={savingPeriod}
+                className="w-full py-2.5 bg-zinc-900 text-white rounded-xl text-xs font-semibold disabled:opacity-40">
+                {savingPeriod ? '저장 중...' : '주기 저장하기'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 발송 문구 설정 */}
