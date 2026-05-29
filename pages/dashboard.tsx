@@ -3,119 +3,140 @@ import { useRouter } from 'next/router'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+import { CalendarDays, Users, Scissors, Bell, UserCircle, ChevronRight, CheckCircle } from 'lucide-react'
 
 export default function Dashboard() {
   const router = useRouter()
   const [session, setSession] = useState<any>(null)
   const [todayRecords, setTodayRecords] = useState<any[]>([])
-  const [loadingToday, setLoadingToday] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     const s = getSession()
     if (!s) { router.replace('/'); return }
     setSession(s)
-    loadTodayRecords(s.designer_id)
+    loadToday(s.designer_id)
   }, [])
 
-  async function loadTodayRecords(designer_id: string) {
-    setLoadingToday(true)
+  async function loadToday(designer_id: string) {
+    setLoading(true)
     const today = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('service_records').select('*, customers(name, phone)')
       .eq('designer_id', designer_id).eq('service_date', today)
       .order('created_at', { ascending: false })
     setTodayRecords(data || [])
-    setLoadingToday(false)
+    setLoading(false)
   }
-
-  function logout() { clearSession(); router.replace('/') }
 
   if (!session) return null
 
   const todayStr = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
   const displayed = showAll ? todayRecords : todayRecords.slice(0, 4)
-  const hasMore = todayRecords.length > 4
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] pb-32">
-      <div className="bg-white/90 sticky top-0 z-50 px-4 py-4 flex justify-between items-center border-b border-gray-100 backdrop-blur-md">
-        <div>
-          <h1 className="text-xl font-black text-amber-500">헤어로그</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{todayStr}</p>
+    <div className="min-h-screen bg-white pb-24">
+      {/* 헤더 */}
+      <div className="bg-white px-5 pt-14 pb-5 border-b border-zinc-100">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-900">헤어로그</h1>
+            <p className="text-xs text-zinc-400 mt-0.5 tracking-tight">{todayStr}</p>
+          </div>
+          <button onClick={() => { clearSession(); router.replace('/') }}
+            className="text-xs text-zinc-400 border border-zinc-200 rounded-lg px-3 py-1.5 mt-1 hover:bg-zinc-50 transition">
+            로그아웃
+          </button>
         </div>
-        <button onClick={logout} className="text-xs text-gray-400 border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50 transition">로그아웃</button>
+        <p className="text-sm text-zinc-500 mt-4">
+          안녕하세요, <span className="font-semibold text-zinc-900">{session.nickname}</span>님
+        </p>
       </div>
 
-      <div className="px-4 py-5 max-w-lg mx-auto space-y-5">
-        <p className="text-gray-500 text-sm">안녕하세요, <span className="font-bold text-gray-800">{session.nickname}</span>님 👋</p>
+      <div className="px-5 py-5 max-w-lg mx-auto space-y-6">
 
+        {/* 오늘 시술 현황 */}
         <div>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-sm font-bold text-gray-700">📋 오늘 시술 현황</h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">{todayRecords.length}건 완료</span>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">오늘 시술</span>
+            <span className="text-xs text-zinc-400 tracking-tight">{todayRecords.length}건</span>
           </div>
-          {loadingToday ? (
-            <div className="bg-white rounded-2xl p-6 text-center text-sm text-gray-400 shadow-sm border border-gray-100">불러오는 중...</div>
+
+          {loading ? (
+            <div className="border border-zinc-100 rounded-xl p-6 text-center text-sm text-zinc-400">불러오는 중...</div>
           ) : todayRecords.length === 0 ? (
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm border border-gray-100">
-              <p className="text-gray-400 text-sm">오늘 시술 기록이 없어요</p>
-              <Link href="/service/new" className="text-amber-500 text-sm font-bold mt-2 inline-block">+ 첫 시술 기록하기</Link>
+            <div className="border border-zinc-100 rounded-xl p-6 text-center">
+              <p className="text-sm text-zinc-400">오늘 시술 기록이 없어요</p>
+              <Link href="/service/new" className="text-xs font-semibold text-zinc-900 mt-2 inline-block underline underline-offset-2">
+                첫 시술 기록하기
+              </Link>
             </div>
           ) : (
-            <>
-              <div className="space-y-2">
-                {displayed.map(r => {
-                  const name = r.customers?.name || '고객'
-                  const phone = r.customers?.phone || ''
-                  const last4 = phone.replace(/-/g, '').slice(-4)
-                  return (
-                    <Link key={r.id} href={`/customers/${r.customer_id}`}
-                      className="bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:shadow-md transition cursor-pointer block shadow-sm border border-gray-100">
-                      <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{name[0]}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-sm">{name}</span>
-                          {last4 && <span className="text-xs text-gray-400">({last4})</span>}
-                          {r.gender === 'female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-1.5 py-0.5">여</span>}
-                          {r.gender === 'male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-1.5 py-0.5">남</span>}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{r.service_type}</p>
+            <div className="border border-zinc-100 rounded-xl overflow-hidden divide-y divide-zinc-100">
+              {displayed.map(r => {
+                const name = r.customers?.name || '고객'
+                const phone = r.customers?.phone || ''
+                const last4 = phone.replace(/-/g,'').slice(-4)
+                return (
+                  <Link key={r.id} href={`/customers/${r.customer_id}`}
+                    className="flex items-center gap-3 px-4 py-3.5 hover:bg-zinc-50 transition">
+                    <div className="w-9 h-9 rounded-full bg-zinc-900 text-white flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                      {name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-sm text-zinc-900 tracking-tight">{name}</span>
+                        {last4 && <span className="text-xs text-zinc-400 tracking-tight">({last4})</span>}
+                        {r.gender === 'female' && <span className="text-[10px] bg-[#F5EFEA] text-[#8A624A] rounded-full px-1.5 py-0.5 font-medium">여</span>}
+                        {r.gender === 'male' && <span className="text-[10px] bg-zinc-100 text-zinc-500 rounded-full px-1.5 py-0.5 font-medium">남</span>}
                       </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">완료 ✅</span>
-                        <span className="text-xs text-gray-400">{r.sms_sent ? '문자발송됨' : '미발송'}</span>
+                      <p className="text-xs text-zinc-400 mt-0.5 truncate">{r.service_type}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <div className="flex items-center gap-1">
+                        <CheckCircle size={12} className="text-emerald-500"/>
+                        <span className="text-[10px] text-emerald-600 font-medium">완료</span>
                       </div>
-                    </Link>
-                  )
-                })}
-              </div>
-              {hasMore && (
+                      <span className="text-[10px] text-zinc-400">{r.sms_sent ? '문자 발송' : '미발송'}</span>
+                    </div>
+                  </Link>
+                )
+              })}
+              {todayRecords.length > 4 && (
                 <button onClick={() => setShowAll(!showAll)}
-                  className="w-full mt-2 py-2.5 text-xs text-amber-600 font-bold border border-amber-200 rounded-xl bg-amber-50 hover:bg-amber-100 transition">
-                  {showAll ? '▲ 접기' : `▼ 더보기 (${todayRecords.length - 4}건 더)`}
+                  className="w-full py-3 text-xs font-medium text-zinc-500 hover:bg-zinc-50 transition flex items-center justify-center gap-1">
+                  {showAll ? '접기' : `${todayRecords.length - 4}건 더 보기`}
+                  <ChevronRight size={12} className={showAll ? 'rotate-90' : '-rotate-90'} />
                 </button>
               )}
-            </>
+            </div>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { href: '/service/new', icon: '✂️', bg: 'bg-amber-500', label: '시술 기록 작성', sub: '새 시술 내역 기록' },
-            { href: '/customers', icon: '👥', bg: 'bg-blue-100', label: '고객 목록', sub: '고객 검색 및 이력 확인' },
-            { href: '/revisit', icon: '🔔', bg: 'bg-orange-100', label: '재방문 관리', sub: '미방문 고객 문자 발송' },
-            { href: '/profile', icon: '💼', bg: 'bg-green-100', label: '내 프로필', sub: '소속, 경력, 예약링크' },
-          ].map(m => (
-            <Link key={m.href} href={m.href}
-              className="bg-white rounded-2xl p-4 flex flex-col gap-2 hover:shadow-md transition shadow-sm border border-gray-100 active:scale-[0.98]">
-              <div className={`w-11 h-11 ${m.bg} rounded-xl flex items-center justify-center text-xl ${m.bg === 'bg-amber-500' ? 'text-white' : ''}`}>{m.icon}</div>
-              <div>
-                <p className="font-bold text-sm text-gray-800">{m.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{m.sub}</p>
-              </div>
-            </Link>
-          ))}
+        {/* 메뉴 */}
+        <div>
+          <span className="text-xs font-semibold text-zinc-400 tracking-wider uppercase block mb-3">메뉴</span>
+          <div className="border border-zinc-100 rounded-xl overflow-hidden divide-y divide-zinc-100">
+            {[
+              { href: '/service/new', Icon: Scissors, label: '시술 기록 작성', sub: '새 시술 내역 기록' },
+              { href: '/customers', Icon: Users, label: '고객 목록', sub: '고객 검색 및 시술 이력' },
+              { href: '/revisit', Icon: Bell, label: '재방문 관리', sub: '장기 미방문 고객 알림' },
+              { href: '/profile', Icon: UserCircle, label: '내 프로필', sub: '소속, 경력, 예약링크' },
+            ].map(({ href, Icon, label, sub }) => (
+              <Link key={href} href={href}
+                className="flex items-center gap-4 px-4 py-4 hover:bg-zinc-50 transition active:bg-zinc-100">
+                <div className="w-9 h-9 border border-zinc-200 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Icon size={17} strokeWidth={1.5} className="text-zinc-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-zinc-900 tracking-tight">{label}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{sub}</p>
+                </div>
+                <ChevronRight size={15} className="text-zinc-300 flex-shrink-0" />
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -126,21 +147,21 @@ export default function Dashboard() {
 
 function BottomNavBar({ activeMenu, router }: { activeMenu: string; router: any }) {
   const menus = [
-    { k: 'home', l: '오늘시술', i: '📅', path: '/dashboard' },
-    { k: 'customers', l: '고객목록', i: '👥', path: '/customers' },
-    { k: 'service', l: '시술작성', i: '✂️', path: '/service/new' },
-    { k: 'revisit', l: '재방문관리', i: '🔄', path: '/revisit' },
-    { k: 'profile', l: '프로필', i: '👤', path: '/profile' },
+    { k: 'home', l: '오늘', Icon: CalendarDays, path: '/dashboard' },
+    { k: 'customers', l: '고객', Icon: Users, path: '/customers' },
+    { k: 'service', l: '시술', Icon: Scissors, path: '/service/new' },
+    { k: 'revisit', l: '재방문', Icon: Bell, path: '/revisit' },
+    { k: 'profile', l: '프로필', Icon: UserCircle, path: '/profile' },
   ]
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 border-t border-gray-100 px-2 py-2 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] backdrop-blur-md max-w-lg mx-auto flex justify-around items-center rounded-t-2xl">
-      {menus.map((m) => {
-        const isAct = activeMenu === m.k
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-zinc-100 max-w-lg mx-auto flex justify-around items-center py-2 px-2">
+      {menus.map(({ k, l, Icon, path }) => {
+        const isAct = activeMenu === k
         return (
-          <button key={m.k} onClick={() => router.push(m.path)}
-            className="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 active:scale-95">
-            <span className={`text-xl mb-0.5 ${isAct ? 'scale-110' : 'opacity-60'}`}>{m.i}</span>
-            <span className={`text-[10px] font-bold ${isAct ? 'text-amber-500 font-black' : 'text-gray-400'}`}>{m.l}</span>
+          <button key={k} onClick={() => router.push(path)}
+            className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl transition-all active:scale-95">
+            <Icon size={20} strokeWidth={isAct ? 2 : 1.5} className={isAct ? 'text-[#B37346]' : 'text-zinc-400'} />
+            <span className={'text-[10px] font-medium ' + (isAct ? 'text-[#B37346]' : 'text-zinc-400')}>{l}</span>
           </button>
         )
       })}
