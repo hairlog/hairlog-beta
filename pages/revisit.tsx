@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { getSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { CalendarDays, Users, Scissors, Bell, UserCircle, ChevronDown, ChevronLeft } from 'lucide-react'
 
 const DEFAULT_MSGS: Record<string, { warn: string; danger: string }> = {
   cut: {
@@ -25,17 +26,10 @@ const DEFAULT_MSGS: Record<string, { warn: string; danger: string }> = {
     danger: '안녕하세요 😊 오랜만이에요!\n두피 상태는 괜찮으신가요? 🌿\n가려움이나 불편함 있으시면 편하게 연락 주세요!',
   },
 }
-
-const DEFAULT_PERIODS: Record<string, number> = {
-  cut: 35, color: 30, perm: 90, clinic: 14, scalp: 21,
-}
-
+const DEFAULT_PERIODS: Record<string, number> = { cut: 35, color: 30, perm: 90, clinic: 14, scalp: 21 }
 const SVC_TABS = [
-  { k: 'cut', icon: '✂️', label: '컷' },
-  { k: 'color', icon: '🎨', label: '염색' },
-  { k: 'perm', icon: '🌀', label: '파마' },
-  { k: 'clinic', icon: '💊', label: '클리닉' },
-  { k: 'scalp', icon: '🌿', label: '두피' },
+  { k: 'cut', label: '컷' }, { k: 'color', label: '염색' }, { k: 'perm', label: '파마' },
+  { k: 'clinic', label: '클리닉' }, { k: 'scalp', label: '두피' },
 ]
 
 function detectSvcType(serviceType: string): string {
@@ -44,7 +38,6 @@ function detectSvcType(serviceType: string): string {
   if (t.includes('클리닉') || t.includes('트리트먼트')) return 'clinic'
   if (t.includes('파마') || t.includes('펌')) return 'perm'
   if (t.includes('염색') || t.includes('컬러') || t.includes('레벨')) return 'color'
-  if (t.includes('컷') || t.includes('cut')) return 'cut'
   return 'cut'
 }
 
@@ -93,7 +86,7 @@ export default function Revisit() {
     setLoading(false)
   }
 
-  function getStatus(c: any): 'recent' | 'warn' | 'danger' | 'none' {
+  function getStatus(c: any): 'recent'|'warn'|'danger'|'none' {
     if (!c.last_visit_at) return 'none'
     const days = Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000)
     const periods = designer?.revisit_settings || {}
@@ -108,32 +101,32 @@ export default function Revisit() {
     const status = getStatus(c)
     if (status === 'recent' || status === 'none') return false
     if (genderFilter !== 'all' && c.gender !== genderFilter) return false
-    if (svcFilter !== 'all' && detectSvcType(c.last_service?.service_type || '') !== svcFilter) return false
+    if (svcFilter !== 'all' && detectSvcType(c.last_service?.service_type||'') !== svcFilter) return false
     if (statusFilter !== 'all' && status !== statusFilter) return false
     return true
   })
 
   function toggleSelect(id: string) {
-    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   }
-  function selectAll() {
-    setSelected(selected.length === filtered.length ? [] : filtered.map(c => c.id))
-  }
+
   function switchMsgTab(k: string) {
     setMsgTab(k)
     setMsgEdit(msgTemplates[k] || DEFAULT_MSGS[k as keyof typeof DEFAULT_MSGS])
   }
+
   async function saveMsgTemplate() {
     setSavingMsg(true)
     const updated = { ...msgTemplates, [msgTab]: msgEdit }
     setMsgTemplates(updated)
     await supabase.from('designers').update({ message_templates: updated }).eq('id', session.designer_id)
     setSavingMsg(false)
-    alert('✅ 저장됐어요!')
+    alert('저장됐어요!')
   }
+
   async function sendBulk() {
     if (selected.length === 0) { alert('고객을 선택해주세요'); return }
-    if (!confirm(`${selected.length}명에게 재방문 알림을 발송할까요?`)) return
+    if (!confirm(selected.length + '명에게 재방문 알림을 발송할까요?')) return
     setSending(true)
     const targets = filtered.filter(c => selected.includes(c.id))
     const messages = targets.map(c => {
@@ -147,136 +140,165 @@ export default function Revisit() {
       body: JSON.stringify({ designer_id: session.designer_id, customer_ids: selected, messages }),
     })
     setSending(false)
-    if (res.ok) { alert(`✅ ${selected.length}명에게 발송 완료!`); setSelected([]) }
+    if (res.ok) { alert(selected.length + '명에게 발송 완료!'); setSelected([]) }
     else alert('발송 중 오류가 발생했어요')
   }
 
   if (!session) return null
 
   const STATUS_META = {
-    warn:   { dot: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700', label: '방문권장' },
-    danger: { dot: 'bg-red-500',    badge: 'bg-red-100 text-red-600',       label: '장기미방문' },
+    warn:   { dot: 'bg-amber-400', badge: 'bg-amber-50 text-amber-700', label: '방문권장' },
+    danger: { dot: 'bg-red-400',   badge: 'bg-red-50 text-red-600',     label: '장기미방문' },
   }
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] pb-32">
-      <div className="bg-white/90 sticky top-0 z-50 px-4 py-4 flex items-center gap-3 border-b border-gray-100 backdrop-blur-md">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition text-xl font-bold">←</button>
-        <h2 className="text-xl font-bold tracking-tight">재방문 알림 보내기</h2>
+    <div className="min-h-screen bg-white pb-24">
+      {/* 헤더 */}
+      <div className="bg-white px-5 pt-14 pb-4 border-b border-zinc-100 flex items-center gap-3">
+        <button onClick={() => router.push('/dashboard')} className="p-1 -ml-1 rounded-lg hover:bg-zinc-100 transition">
+          <ChevronLeft size={20} className="text-zinc-600" />
+        </button>
+        <h2 className="text-xl font-bold tracking-tight text-zinc-900">재방문 관리</h2>
       </div>
 
-      <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
+      <div className="max-w-lg mx-auto px-5 py-4 space-y-4">
+        {/* 필터 */}
         <div className="space-y-2">
           <div className="flex gap-2">
-            {[{v:'all',l:'전체'},{v:'female',l:'여성 👩'},{v:'male',l:'남성 👨'}].map(({v,l}) => (
+            {[{v:'all',l:'전체'},{v:'female',l:'여성'},{v:'male',l:'남성'}].map(({v,l}) => (
               <button key={v} onClick={() => setGenderFilter(v as any)}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${genderFilter===v?'bg-amber-500 text-white border-amber-500':'bg-white text-gray-600 border-gray-200'}`}>{l}</button>
+                className={'px-3 py-1.5 rounded-full text-xs font-semibold border transition ' +
+                  (genderFilter===v ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200')}>
+                {l}
+              </button>
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => setSvcFilter('all')} className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${svcFilter==='all'?'bg-amber-500 text-white border-amber-500':'bg-white text-gray-600 border-gray-200'}`}>전체</button>
-            {SVC_TABS.map(({k, icon, label}) => (
-              <button key={k} onClick={() => setSvcFilter(k)} className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${svcFilter===k?'bg-amber-500 text-white border-amber-500':'bg-white text-gray-600 border-gray-200'}`}>{icon} {label}</button>
+            <button onClick={() => setSvcFilter('all')} className={'px-3 py-1.5 rounded-full text-xs font-semibold border transition ' + (svcFilter==='all' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200')}>전체</button>
+            {SVC_TABS.map(({ k, label }) => (
+              <button key={k} onClick={() => setSvcFilter(k)}
+                className={'px-3 py-1.5 rounded-full text-xs font-semibold border transition ' +
+                  (svcFilter===k ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200')}>
+                {label}
+              </button>
             ))}
           </div>
           <div className="flex gap-2">
-            {[{v:'all',l:'전체'},{v:'warn',l:'🟡 방문권장'},{v:'danger',l:'🔴 장기미방문'}].map(({v,l}) => (
+            {[{v:'all',l:'전체'},{v:'warn',l:'방문권장'},{v:'danger',l:'장기미방문'}].map(({v,l}) => (
               <button key={v} onClick={() => setStatusFilter(v as any)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${statusFilter===v?'bg-amber-500 text-white border-amber-500':'bg-white text-gray-500 border-gray-200'}`}>{l}</button>
+                className={'px-3 py-1.5 rounded-full text-xs font-semibold border transition ' +
+                  (statusFilter===v ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-500 border-zinc-200')}>
+                {l}
+              </button>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-          <button onClick={() => setShowMsgSetting(!showMsgSetting)} className="w-full px-5 py-4 flex items-center justify-between text-left">
-            <div className="flex items-center gap-3">
-              <span className="text-xl">✏️</span>
-              <div><div className="font-bold text-base">발송 문구 설정</div><div className="text-xs text-gray-400 mt-0.5">시술별 자동완성 문구 확인·수정</div></div>
+        {/* 발송 문구 설정 */}
+        <div className="border border-zinc-100 rounded-xl overflow-hidden">
+          <button onClick={() => setShowMsgSetting(!showMsgSetting)}
+            className="w-full px-4 py-4 flex items-center justify-between text-left hover:bg-zinc-50 transition">
+            <div>
+              <p className="text-sm font-semibold text-zinc-900 tracking-tight">발송 문구 설정</p>
+              <p className="text-xs text-zinc-400 mt-0.5">시술별 재방문 알림 문구 수정</p>
             </div>
-            <span className={`text-gray-400 text-lg transition-transform ${showMsgSetting?'rotate-180':''}`}>∨</span>
+            <ChevronDown size={16} className={'text-zinc-400 transition-transform ' + (showMsgSetting ? 'rotate-180' : '')} />
           </button>
           {showMsgSetting && (
-            <div className="border-t border-gray-100">
-              <div className="flex border-b border-gray-100">
-                {SVC_TABS.map(({k, icon, label}) => (
+            <div className="border-t border-zinc-100">
+              <div className="flex border-b border-zinc-100 overflow-x-auto">
+                {SVC_TABS.map(({ k, label }) => (
                   <button key={k} onClick={() => switchMsgTab(k)}
-                    className={`flex-1 py-3 text-xs font-bold border-b-2 transition ${msgTab===k?'text-amber-500 border-amber-500':'text-gray-400 border-transparent'}`}>{icon} {label}</button>
+                    className={'flex-1 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap px-2 ' +
+                      (msgTab===k ? 'text-zinc-900 border-zinc-900' : 'text-zinc-400 border-transparent')}>
+                    {label}
+                  </button>
                 ))}
               </div>
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-4 py-4 space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div><span className="text-sm font-bold text-yellow-600">재방문 권장 문구</span></div>
-                    <span className="text-xs text-gray-400">(발송 시 자동 입력)</span>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <p className="text-xs font-semibold text-zinc-600">방문권장 문구</p>
                   </div>
-                  <textarea value={msgEdit.warn} onChange={e => setMsgEdit(prev => ({...prev, warn: e.target.value}))} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-amber-500 leading-relaxed" />
+                  <textarea value={msgEdit.warn} onChange={e => setMsgEdit(p => ({...p, warn: e.target.value}))}
+                    rows={4} className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-xs outline-none resize-none focus:border-zinc-400 leading-relaxed bg-zinc-50" />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500"></div><span className="text-sm font-bold text-red-500">장기 미방문 문구</span></div>
-                    <span className="text-xs text-gray-400">(발송 시 자동 입력)</span>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <p className="text-xs font-semibold text-zinc-600">장기미방문 문구</p>
                   </div>
-                  <textarea value={msgEdit.danger} onChange={e => setMsgEdit(prev => ({...prev, danger: e.target.value}))} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-amber-500 leading-relaxed" />
+                  <textarea value={msgEdit.danger} onChange={e => setMsgEdit(p => ({...p, danger: e.target.value}))}
+                    rows={4} className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-xs outline-none resize-none focus:border-zinc-400 leading-relaxed bg-zinc-50" />
                 </div>
-                <div className="flex gap-3 pt-1">
-                  <button onClick={() => setMsgEdit(DEFAULT_MSGS[msgTab as keyof typeof DEFAULT_MSGS])} className="flex-1 py-3 border border-gray-200 rounded-2xl text-sm font-bold text-gray-500 bg-white hover:bg-gray-50 transition">기본값으로</button>
-                  <button onClick={saveMsgTemplate} disabled={savingMsg} className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl text-sm font-bold disabled:opacity-50">{savingMsg ? '저장 중...' : '저장하기 ✓'}</button>
+                <div className="flex gap-2">
+                  <button onClick={() => setMsgEdit(DEFAULT_MSGS[msgTab as keyof typeof DEFAULT_MSGS])}
+                    className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-500 hover:bg-zinc-50 transition">
+                    기본값으로
+                  </button>
+                  <button onClick={saveMsgTemplate} disabled={savingMsg}
+                    className="flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-xs font-semibold disabled:opacity-40">
+                    {savingMsg ? '저장 중...' : '저장하기'}
+                  </button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
+        {/* 고객 목록 */}
         <div>
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm text-gray-500 font-bold">{filtered.length}명</p>
-            <button onClick={selectAll} className="text-sm text-amber-500 font-bold">
+            <span className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">{filtered.length}명</span>
+            <button onClick={() => setSelected(selected.length === filtered.length ? [] : filtered.map(c => c.id))}
+              className="text-xs font-semibold text-zinc-500 underline underline-offset-2">
               {selected.length === filtered.length && filtered.length > 0 ? '전체 해제' : '전체 선택'}
             </button>
           </div>
+
           {loading ? (
-            <div className="bg-white rounded-2xl p-8 text-center text-gray-400 text-sm shadow-sm border border-gray-100">불러오는 중...</div>
+            <p className="text-center text-zinc-400 text-sm py-8">불러오는 중...</p>
           ) : filtered.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <p className="text-gray-400 text-sm">재방문 알림이 필요한 고객이 없어요</p>
-              <p className="text-xs text-gray-300 mt-1">최근 방문 고객들은 자동으로 제외됩니다</p>
+            <div className="border border-zinc-100 rounded-xl p-10 text-center">
+              <p className="text-sm text-zinc-400">재방문 알림이 필요한 고객이 없어요</p>
+              <p className="text-xs text-zinc-300 mt-1">최근 방문 고객은 자동으로 제외됩니다</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="border border-zinc-100 rounded-xl overflow-hidden divide-y divide-zinc-100">
               {filtered.map(c => {
-                const status = getStatus(c) as 'warn' | 'danger'
+                const status = getStatus(c) as 'warn'|'danger'
                 const meta = STATUS_META[status]
-                const last4 = c.phone?.replace(/-/g, '').slice(-4)
+                const last4 = c.phone?.replace(/-/g,'').slice(-4)
                 const daysAgo = c.last_visit_at ? Math.floor((Date.now() - new Date(c.last_visit_at).getTime()) / 86400000) : null
                 const svcType = detectSvcType(c.last_service?.service_type || '')
                 const svcInfo = SVC_TABS.find(t => t.k === svcType)
                 const isSelected = selected.includes(c.id)
                 return (
                   <div key={c.id} onClick={() => toggleSelect(c.id)}
-                    className={`bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer transition shadow-sm border-2 active:scale-[0.99] ${isSelected?'border-amber-500':'border-transparent'}`}>
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isSelected?'bg-amber-500 border-amber-500':'border-gray-300'}`}>
-                      {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                    className={'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition ' + (isSelected ? 'bg-zinc-50' : 'hover:bg-zinc-50')}>
+                    <div className={'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition ' + (isSelected ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-300')}>
+                      {isSelected && <span className="text-white text-[9px] font-black">✓</span>}
                     </div>
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.dot}`} />
-                    <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{c.name?.[0]}</div>
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${meta.dot}`} />
+                    <div className="w-9 h-9 rounded-full bg-zinc-900 text-white flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                      {c.name?.[0]}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm">{c.name}</span>
-                        {last4 && <span className="text-xs text-gray-400">({last4})</span>}
-                        {c.gender==='female' && <span className="text-xs bg-pink-100 text-pink-600 rounded-full px-1.5 py-0.5">여</span>}
-                        {c.gender==='male' && <span className="text-xs bg-blue-100 text-blue-600 rounded-full px-1.5 py-0.5">남</span>}
+                        <span className="font-semibold text-sm text-zinc-900 tracking-tight">{c.name}</span>
+                        {last4 && <span className="text-xs text-zinc-400 tracking-tight">({last4})</span>}
+                        {c.gender === 'female' && <span className="text-[10px] bg-[#F5EFEA] text-[#8A624A] rounded-full px-1.5 py-0.5 font-medium">여</span>}
+                        {c.gender === 'male' && <span className="text-[10px] bg-zinc-100 text-zinc-500 rounded-full px-1.5 py-0.5 font-medium">남</span>}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {svcInfo && <span className="text-xs text-gray-400">{svcInfo.icon} {svcInfo.label}</span>}
-                        {daysAgo !== null && <span className="text-xs text-gray-400">· {daysAgo}일 전</span>}
+                        {svcInfo && <span className="text-xs text-zinc-400">{svcInfo.label}</span>}
+                        {daysAgo !== null && <span className="text-xs text-zinc-400">· {daysAgo}일 전</span>}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${meta.badge}`}>{meta.label}</span>
-                      {c.last_revisit_sms_at && Math.floor((Date.now() - new Date(c.last_revisit_sms_at).getTime()) / 86400000) < 10 && (
-                        <span className="text-xs text-gray-400">🔒 발송완료</span>
-                      )}
-                    </div>
+                    <span className={'text-[10px] px-2 py-1 rounded-full font-semibold flex-shrink-0 ' + meta.badge}>
+                      {meta.label}
+                    </span>
                   </div>
                 )
               })}
@@ -285,11 +307,12 @@ export default function Revisit() {
         </div>
       </div>
 
+      {/* 발송 버튼 */}
       {selected.length > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 px-4 pb-3 pt-3 bg-white border-t border-gray-100 shadow-lg z-40">
+        <div className="fixed bottom-20 left-0 right-0 px-5 z-40 max-w-lg mx-auto">
           <button onClick={sendBulk} disabled={sending}
-            className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-base font-bold rounded-2xl shadow-md disabled:opacity-50 max-w-lg mx-auto block active:scale-[0.99] transition">
-            {sending ? '발송 중...' : `📨 선택한 ${selected.length}명에게 알림 발송`}
+            className="w-full py-3.5 bg-zinc-900 text-white text-sm font-semibold rounded-xl shadow-lg disabled:opacity-40 active:scale-[0.99] transition">
+            {sending ? '발송 중...' : selected.length + '명에게 알림 발송'}
           </button>
         </div>
       )}
@@ -301,21 +324,21 @@ export default function Revisit() {
 
 function BottomNavBar({ activeMenu, router }: { activeMenu: string; router: any }) {
   const menus = [
-    { k: 'home', l: '오늘시술', i: '📅', path: '/dashboard' },
-    { k: 'customers', l: '고객목록', i: '👥', path: '/customers' },
-    { k: 'service', l: '시술작성', i: '✂️', path: '/service/new' },
-    { k: 'revisit', l: '재방문관리', i: '🔄', path: '/revisit' },
-    { k: 'profile', l: '프로필', i: '👤', path: '/profile' },
+    { k: 'home', l: '오늘', Icon: CalendarDays, path: '/dashboard' },
+    { k: 'customers', l: '고객', Icon: Users, path: '/customers' },
+    { k: 'service', l: '시술', Icon: Scissors, path: '/service/new' },
+    { k: 'revisit', l: '재방문', Icon: Bell, path: '/revisit' },
+    { k: 'profile', l: '프로필', Icon: UserCircle, path: '/profile' },
   ]
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 border-t border-gray-100 px-2 py-2 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] backdrop-blur-md max-w-lg mx-auto flex justify-around items-center rounded-t-2xl">
-      {menus.map((m) => {
-        const isAct = activeMenu === m.k
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-zinc-100 max-w-lg mx-auto flex justify-around items-center py-2 px-2">
+      {menus.map(({ k, l, Icon, path }) => {
+        const isAct = activeMenu === k
         return (
-          <button key={m.k} onClick={() => router.push(m.path)}
-            className="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 active:scale-95">
-            <span className={`text-xl mb-0.5 ${isAct ? 'scale-110' : 'opacity-60'}`}>{m.i}</span>
-            <span className={`text-[10px] font-bold ${isAct ? 'text-amber-500 font-black' : 'text-gray-400'}`}>{m.l}</span>
+          <button key={k} onClick={() => router.push(path)}
+            className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl transition-all active:scale-95">
+            <Icon size={20} strokeWidth={isAct ? 2 : 1.5} className={isAct ? 'text-[#B37346]' : 'text-zinc-400'} />
+            <span className={'text-[10px] font-medium ' + (isAct ? 'text-[#B37346]' : 'text-zinc-400')}>{l}</span>
           </button>
         )
       })}
