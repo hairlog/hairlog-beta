@@ -6,26 +6,45 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  background-color: #F8F8F8;
-  color: #2D2D2D;
+  font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #FFFFFF;
+  color: #18181B;
+  -webkit-font-smoothing: antialiased;
 }
 
 .btn-primary {
-  @apply bg-accent text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition;
+  @apply bg-[#18181B] text-white px-4 py-3 rounded-xl text-sm font-semibold
+         hover:bg-zinc-800 active:scale-[0.99] transition-all cursor-pointer
+         disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+.btn-brand {
+  @apply bg-[#B37346] text-white px-4 py-3 rounded-xl text-sm font-semibold
+         hover:bg-[#9A6238] active:scale-[0.99] transition-all cursor-pointer
+         disabled:opacity-40 disabled:cursor-not-allowed;
 }
 
 .btn-secondary {
-  @apply bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-50 transition;
+  @apply bg-white border border-zinc-200 text-zinc-700 px-4 py-3 rounded-xl text-sm font-semibold
+         hover:bg-zinc-50 active:scale-[0.99] transition-all cursor-pointer;
 }
 
 .input {
-  @apply w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-accent;
+  @apply w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm
+         focus:outline-none focus:border-zinc-400 transition-colors
+         font-medium placeholder:text-zinc-400 placeholder:font-normal;
 }
 
 .card {
-  @apply bg-white rounded-xl shadow-sm p-4;
+  @apply bg-white border border-zinc-200 rounded-xl p-4;
 }
+
+.badge-green { @apply bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full; }
+.badge-yellow { @apply bg-amber-50 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded-full; }
+.badge-red { @apply bg-red-50 text-red-600 text-[10px] font-semibold px-2 py-0.5 rounded-full; }
+.badge-gray { @apply bg-zinc-100 text-zinc-500 text-[10px] font-semibold px-2 py-0.5 rounded-full; }
+.badge-brown { @apply bg-[#F5EDE4] text-[#B37346] text-[10px] font-semibold px-2 py-0.5 rounded-full; }
