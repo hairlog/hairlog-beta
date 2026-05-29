@@ -131,7 +131,7 @@ export default function NewService() {
   async function uploadPhotos():Promise<string[]>{if(!photos.length)return[];const urls:string[]=[];for(const p of photos){const r=new FileReader();const b64=await new Promise<string>(res=>{r.onload=e=>res(e.target?.result as string);r.readAsDataURL(p.file)});const res=await fetch('/api/upload-photo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_base64:b64,file_name:p.file.name,designer_id:session.designer_id})});const d=await res.json();if(d.url)urls.push(d.url)};return urls}
   function buildSvc(){const parts:string[]=[];SERVICE_ITEMS.forEach(({k,label})=>{if(!checked[k])return;if(k==='color'){const cp=Object.entries(colorTags).map(([,ts])=>ts.join(' ')).filter(Boolean);parts.push(label+(cp.length?': '+cp.join(' / '):''))}else{const ts=tags[k]||[];parts.push(label+(ts.length?': '+ts.join(', '):''))}});return parts.join(' · ')}
   function validate(){if(!custName.trim())return '고객 이름을 입력해주세요';if(!custPhone.trim())return '연락처를 입력해주세요';if(consentStatus!=='agreed')return '개인정보 동의가 필요합니다';if(!Object.values(checked).some(Boolean))return '시술 항목을 선택해주세요';return ''}
-  function goConfirm(){const err=validate();if(err){setError(err);return};setError('');setStep('confirm')}
+  function goConfirm(){const err=validate();if(err){alert(err);setError(err);return};setError('');setStep('confirm')}
   async function handleSubmit(){
     if(!agreed){setError('개인정보 수집 동의가 필요합니다');return}
     setLoading(true);setError('');setUploadingPhotos(true)
