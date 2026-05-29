@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { getSession } from '../../lib/auth'
-
-const PRIVACY_TEXT = `[개인정보 수집 및 이용 동의 (필수)]
-수집 목적: 헤어 디자이너의 시술 이력 관리, 맞춤형 헤어 케어 서비스 제공 및 시술 내역 SMS 발송
-수집 항목: 고객 성명, 휴대전화번호, 시술 내역
-보유 및 이용 기간: 고객의 동의 철회 시 또는 서비스 종료 시까지`
+import { CheckCircle, ChevronDown, ChevronUp, X, Camera, Lock, MessageSquare, Mic, CalendarDays, Users, Scissors, Bell, UserCircle } from 'lucide-react'
 
 const CUT_FEMALE: Record<string, string[]> = {
   '숏': ['숏컷','투블럭컷','샤기컷','기타'],
@@ -24,33 +20,22 @@ const COLOR_GROUPS: Record<string, string[]> = {
 const CLINIC_LIST = ['단백질트리트먼트','PPT클리닉','케라틴트리트먼트','스팀트리트먼트','앰플클리닉','매직클리닉','기타']
 const SCALP_LIST = ['두피스케일링','두피앰플','탈모케어','지성두피케어','건성두피케어','기타']
 const SERVICE_ITEMS = [
-  {k:'cut', icon:'✂️', label:'컷'},
-  {k:'perm', icon:'🌀', label:'펌'},
-  {k:'color', icon:'🎨', label:'염색'},
-  {k:'clinic', icon:'💊', label:'클리닉'},
-  {k:'scalp', icon:'🌿', label:'두피케어'},
+  {k:'cut',label:'컷'},{k:'perm',label:'펌'},{k:'color',label:'염색'},
+  {k:'clinic',label:'클리닉'},{k:'scalp',label:'두피케어'},
 ]
 const DEFAULT_PHRASES: Record<string, string[]> = {
-  care: ['드라이 후 아이론 150도 이하','왁스 소량으로 마무리','반건조 상태에서 자연건조 권장','무스 사용 후 드라이','빗질 없이 손으로 모양 잡기'],
-  caution: ['샴푸 내일모레부터','샴푸 48시간 후부터','2주 뒤 크리닉 권장','직사광선 주의','묶거나 집게 사용 금지','뜨거운 물 금지 (48시간)'],
-  next: ['컷 5~6주 후','컷 8주 후','뿌염 4주 후','파마 3개월 후','파마 4~5개월 후','클리닉 2주 후','두피케어 2~3주 후'],
-  memo: ['투블럭 6미리로','옆머리 귀 라인만','앞머리 조금만 자르기','컬 강하게','컬 약하게','뿌리볼륨 살리기'],
+  care: ['드라이 후 아이론 150도 이하','왁스 소량으로 마무리','반건조 후 자연건조 권장','무스 사용 후 드라이','빗질 없이 손으로 모양 잡기'],
+  caution: ['샴푸 내일모레부터','샴푸 48시간 후부터','2주 뒤 클리닉 권장','직사광선 주의','묶거나 집게 사용 금지'],
+  next: ['컷 5~6주 후','컷 8주 후','뿌염 4주 후','파마 3개월 후','파마 4~5개월 후','클리닉 2주 후'],
+  memo: ['투블럭 6미리로','옆머리 귀 라인만','앞머리 조금만','컬 강하게','컬 약하게','뿌리볼륨 살리기'],
 }
-
-function lsGet(key: string): string[] {
-  if (typeof window === 'undefined') return []
-  try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] }
-}
-function lsSet(key: string, val: string[]) {
-  if (typeof window === 'undefined') return
-  try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
-}
+function lsGet(k: string): string[] { if (typeof window==='undefined') return []; try { return JSON.parse(localStorage.getItem(k)||'[]') } catch { return [] } }
+function lsSet(k: string, v: string[]) { if (typeof window==='undefined') return; try { localStorage.setItem(k,JSON.stringify(v)) } catch {} }
 
 export default function NewService() {
   const router = useRouter()
   const [session, setSession] = useState<any>(null)
   const [designer, setDesigner] = useState<any>(null)
-  const [consentType, setConsentType] = useState<'oral'|'sms_consent'>('oral')
   const [step, setStep] = useState<'form'|'confirm'>('form')
   const [loading, setLoading] = useState(false)
   const [agreed, setAgreed] = useState(false)
@@ -59,23 +44,27 @@ export default function NewService() {
   const [custPhone, setCustPhone] = useState('')
   const [svcDate, setSvcDate] = useState(new Date().toISOString().split('T')[0])
   const [gender, setGender] = useState('')
-  const [checked, setChecked] = useState<Record<string, boolean>>({})
+  const [consentStatus, setConsentStatus] = useState<'idle'|'checking'|'agreed'|'pending'|'rejected'|'new'>('idle')
+  const [existingCustomer, setExistingCustomer] = useState<any>(null)
+  const [sendingConsent, setSendingConsent] = useState(false)
+  const [processingVerbal, setProcessingVerbal] = useState(false)
+  const [checked, setChecked] = useState<Record<string,boolean>>({})
   const [cutLen, setCutLen] = useState('')
-  const [tags, setTags] = useState<Record<string, string[]>>({})
-  const [colorTags, setColorTags] = useState<Record<string, string[]>>({})
-  const [svcInput, setSvcInput] = useState<Record<string, string>>({})
+  const [tags, setTags] = useState<Record<string,string[]>>({})
+  const [colorTags, setColorTags] = useState<Record<string,string[]>>({})
+  const [svcInput, setSvcInput] = useState<Record<string,string>>({})
   const [svcTick, setSvcTick] = useState(0)
   const [dmgLevel, setDmgLevel] = useState('')
   const [dmgPart, setDmgPart] = useState('')
   const [noteTab, setNoteTab] = useState('care')
-  const [noteVal, setNoteVal] = useState<Record<string, string>>({care:'', caution:'', next:'', memo:''})
-  const [noteInput, setNoteInput] = useState<Record<string, string>>({care:'', caution:'', next:'', memo:''})
-  const [myPhrases, setMyPhrases] = useState<Record<string, string[]>>({care:[], caution:[], next:[], memo:[]})
+  const [noteVal, setNoteVal] = useState<Record<string,string>>({care:'',caution:'',next:'',memo:''})
+  const [noteInput, setNoteInput] = useState<Record<string,string>>({care:'',caution:'',next:'',memo:''})
+  const [myPhrases, setMyPhrases] = useState<Record<string,string[]>>({care:[],caution:[],next:[],memo:[]})
   const [showRecipe, setShowRecipe] = useState(false)
   const [recipe, setRecipe] = useState('')
   const [showMemo, setShowMemo] = useState(false)
   const [custMemo, setCustMemo] = useState('')
-  const [photos, setPhotos] = useState<{preview: string; file: File}[]>([])
+  const [photos, setPhotos] = useState<{preview:string;file:File}[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -83,336 +72,89 @@ export default function NewService() {
     const s = getSession()
     if (!s) { router.replace('/'); return }
     setSession(s)
-    const p: Record<string, string[]> = {}
-    Object.keys(DEFAULT_PHRASES).forEach(k => { p[k] = lsGet('hl_p_' + k) })
+    const p: Record<string,string[]> = {}
+    Object.keys(DEFAULT_PHRASES).forEach(k => { p[k] = lsGet('hl_p_'+k) })
     setMyPhrases(p)
-    import('../../lib/supabase').then(({ supabase }) => {
-      supabase.from('designers').select('*').eq('id', s.designer_id).single()
-        .then(({ data }) => { if (data) setDesigner(data) })
+    import('../../lib/supabase').then(({supabase}) => {
+      supabase.from('designers').select('*').eq('id',s.designer_id).single().then(({data}) => { if (data) setDesigner(data) })
     })
   }, [])
 
-  function toggleTag(svcKey: string, tag: string) {
-    setTags(prev => { const cur = prev[svcKey]||[]; return {...prev,[svcKey]:cur.includes(tag)?cur.filter(t=>t!==tag):[...cur,tag]} })
+  async function checkConsent(phone: string) {
+    const clean = phone.replace(/-/g,'')
+    if (clean.length < 10) { setConsentStatus('idle'); return }
+    setConsentStatus('checking')
+    const {supabase} = await import('../../lib/supabase')
+    const {data} = await supabase.from('customers').select('*').eq('designer_id',session.designer_id).eq('phone',phone).single()
+    if (data) {
+      setExistingCustomer(data)
+      if (data.name && !custName) setCustName(data.name)
+      setConsentStatus(data.consent_status==='agreed'?'agreed':(data.consent_status||'pending'))
+    } else { setExistingCustomer(null); setConsentStatus('new') }
   }
-  function toggleColorTag(grp: string, tag: string) {
-    setColorTags(prev => { const cur = prev[grp]||[]; return {...prev,[grp]:cur.includes(tag)?cur.filter(t=>t!==tag):[...cur,tag]} })
-  }
-  function addPhrase(tab: string, p: string) {
-    setNoteVal(prev => ({...prev,[tab]:prev[tab]?prev[tab]+'\n'+p:p}))
-  }
-  function savePhrase(tab: string) {
-    const v = noteInput[tab]?.trim(); if (!v) return
-    const mine = lsGet('hl_p_'+tab)
-    if (mine.includes(v)) { alert('이미 저장된 문구예요'); return }
-    mine.unshift(v); if (mine.length>15) mine.pop()
-    lsSet('hl_p_'+tab, mine)
-    setMyPhrases(prev=>({...prev,[tab]:mine}))
-    setNoteInput(prev=>({...prev,[tab]:''}))
-  }
-  function deleteMyPhrase(tab: string, i: number) {
-    const mine = lsGet('hl_p_'+tab); mine.splice(i,1)
-    lsSet('hl_p_'+tab, mine)
-    setMyPhrases(prev=>({...prev,[tab]:mine}))
-  }
-  function saveMyStyle(svcKey: string) {
-    const v = svcInput[svcKey]?.trim(); if (!v) return
-    const mine = lsGet('hl_s_'+svcKey)
-    if (mine.includes(v)) { alert('이미 저장된 스타일이에요'); return }
-    mine.unshift(v); if (mine.length>20) mine.pop()
-    lsSet('hl_s_'+svcKey, mine)
-    setSvcInput(prev=>({...prev,[svcKey]:''}))
-    setSvcTick(t=>t+1)
-  }
-  function deleteMyStyle(svcKey: string, i: number) {
-    const mine = lsGet('hl_s_'+svcKey); mine.splice(i,1)
-    lsSet('hl_s_'+svcKey, mine); setSvcTick(t=>t+1)
-  }
-  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files||[])
-    files.slice(0,5-photos.length).forEach(file=>{
-      const reader = new FileReader()
-      reader.onload = ev=>{ setPhotos(prev=>[...prev,{preview:ev.target?.result as string,file}]) }
-      reader.readAsDataURL(file)
-    })
-    if (fileInputRef.current) fileInputRef.current.value=''
-  }
-  function removePhoto(i: number) { setPhotos(prev=>prev.filter((_,idx)=>idx!==i)) }
-  async function uploadPhotos(): Promise<string[]> {
-    if (photos.length===0) return []
-    const urls: string[] = []
-    for (const p of photos) {
-      const reader = new FileReader()
-      const base64 = await new Promise<string>(resolve=>{reader.onload=e=>resolve(e.target?.result as string);reader.readAsDataURL(p.file)})
-      const res = await fetch('/api/upload-photo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_base64:base64,file_name:p.file.name,designer_id:session.designer_id})})
-      const data = await res.json()
-      if (data.url) urls.push(data.url)
+
+  async function handleVerbalConsent() {
+    if (!custPhone.trim()) { setError('연락처를 먼저 입력해주세요'); return }
+    setProcessingVerbal(true)
+    if (existingCustomer) {
+      const {supabase} = await import('../../lib/supabase')
+      await supabase.from('customers').update({privacy_agreed:true,consent_type:'verbal',consent_status:'agreed',privacy_agreed_at:new Date().toISOString()}).eq('id',existingCustomer.id)
+      setExistingCustomer((p:any)=>({...p,consent_status:'agreed',consent_type:'verbal'}))
     }
-    return urls
-  }
-  function buildSvcSummary() {
-    const parts: string[] = []
-    SERVICE_ITEMS.forEach(({k,label})=>{
-      if (!checked[k]) return
-      if (k==='color') { const cp=Object.entries(colorTags).map(([,ts])=>ts.join(' ')).filter(Boolean); parts.push(label+(cp.length?': '+cp.join(' / '):'')) }
-      else { const ts=tags[k]||[]; parts.push(label+(ts.length?': '+ts.join(', '):'')) }
-    })
-    return parts.join(' · ')
-  }
-  function validate() {
-    if (!custName.trim()) return '고객 이름을 입력해주세요'
-    if (!custPhone.trim()) return '연락처를 입력해주세요'
-    if (!Object.values(checked).some(Boolean)) return '시술 항목을 하나 이상 선택해주세요'
-    return ''
-  }
-  function goConfirm() { const err=validate(); if(err){setError(err);return}; setError(''); setStep('confirm') }
-  async function handleSubmit() {
-    if (!agreed) { setError('개인정보 수집 동의가 필요합니다'); return }
-    setLoading(true); setError(''); setUploadingPhotos(true)
-    const photoUrls = await uploadPhotos()
-    setUploadingPhotos(false)
-    const res = await fetch('/api/service-records/create',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({designer_id:session.designer_id,customer_name:custName,customer_phone:custPhone,service_date:svcDate,service_type:buildSvcSummary(),gender:gender||null,damage_level:dmgLevel||null,damage_part:dmgPart||null,care_method:noteVal.care||null,caution:noteVal.caution||null,next_service:noteVal.next||null,memo:noteVal.memo||null,cust_memo:custMemo||null,secret_recipe:recipe||null,photo_urls:photoUrls.length>0?photoUrls:null,consent_type:consentType}),
-    })
-    const data = await res.json()
-    setLoading(false)
-    if (res.ok) { router.replace('/dashboard') }
-    else { setError(data.error||'오류가 발생했습니다') }
+    setConsentStatus('agreed'); setProcessingVerbal(false)
   }
 
-  if (!session) return null
-  const noteTabs = [{k:'care',l:'손질법'},{k:'caution',l:'주의사항'},{k:'next',l:'다음시술'},{k:'memo',l:'메모'}]
-  const svc = buildSvcSummary()
-
-  const designerPreview = designer
-    ? `\n\n💈 매장: ${designer.salon_name||''}${designer.position?' ('+designer.position+' '+designer.name+')':' '+(designer.name||'')}${designer.business_hours?'\n⏰ 영업시간: '+designer.business_hours:''}${designer.day_off?' (정기휴무: '+designer.day_off+')':''}${designer.temp_holidays?'\n⚠️ 임시휴무: '+designer.temp_holidays:''}`
-    : ''
-
-  if (step === 'confirm') {
-    return (
-      <div className="min-h-screen bg-gray-50 pb-8">
-        <div className="bg-white shadow-sm px-4 py-4 flex items-center gap-3">
-          <button onClick={()=>setStep('form')} className="text-gray-500 text-lg">←</button>
-          <h2 className="text-lg font-semibold">시술 내역 확인</h2>
-        </div>
-        <div className="px-4 py-5 max-w-lg mx-auto space-y-4">
-          <div className="card space-y-1">
-            <h3 className="font-semibold text-gray-700 mb-2">📋 작성 내용 확인</h3>
-            <div className="divide-y divide-gray-100 text-sm">
-              <CRow label="고객명" val={custName} />
-              <CRow label="연락처" val={custPhone} />
-              <CRow label="성별" val={gender==='female'?'여성':gender==='male'?'남성':'-'} />
-              <CRow label="시술일" val={svcDate} />
-              <CRow label="시술 항목" val={svc} />
-              <CRow label="동의 방식" val={consentType==='oral'?'구두 동의':'문자 동의 발송'} />
-              {dmgLevel && <CRow label="전체 손상도" val={dmgLevel} />}
-              {dmgPart && <CRowLong label="부분 손상도" val={dmgPart} />}
-              {noteVal.care && <CRowLong label="손질법" val={noteVal.care} />}
-              {noteVal.caution && <CRowLong label="주의사항" val={noteVal.caution} />}
-              {noteVal.next && <CRow label="다음 시술 권장" val={noteVal.next} />}
-              {noteVal.memo && <CRowLong label="메모" val={noteVal.memo} />}
-            </div>
-          </div>
-          {photos.length > 0 && (
-            <div className="card">
-              <p className="text-xs font-semibold text-gray-500 mb-2">📸 시술 사진 ({photos.length}장)</p>
-              <div className="flex gap-2 flex-wrap">
-                {photos.map((p,i)=><img key={i} src={p.preview} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />)}
-              </div>
-            </div>
-          )}
-          {(custMemo||recipe) && (
-            <div className="card border border-orange-200">
-              <h3 className="font-semibold text-orange-700 text-sm mb-2">🔒 디자이너 전용</h3>
-              <div className="divide-y divide-gray-100 text-sm">
-                {custMemo && <CRowLong label="📌 고객 메모" val={custMemo} />}
-                {recipe && <CRowLong label="🔒 비밀 레시피" val={recipe} />}
-              </div>
-            </div>
-          )}
-          {consentType === 'sms_consent' ? (
-            <div className="card bg-amber-50 border border-amber-200">
-              <p className="text-sm font-semibold text-amber-700 mb-1">📨 문자 동의 발송 예정</p>
-              <p className="text-xs text-amber-600">저장 시 고객({custPhone})에게 개인정보 동의 링크가 발송됩니다. 시술 내역 문자는 발송되지 않습니다.</p>
-            </div>
-          ) : (
-            <div className="card bg-gray-50 border border-gray-200">
-              <p className="text-xs font-semibold text-gray-500 mb-2">📱 고객에게 발송될 문자 미리보기</p>
-              <pre className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap font-sans">{`[헤어로그] 시술 내역 안내\n\n${custName}님, 오늘 시술 감사드립니다. ✨\n\n🗓 시술 날짜: ${svcDate}\n✂ 시술 내용: ${svc}${noteVal.care?'\n\n[홈케어 손질법]\n✔ '+noteVal.care:''}${noteVal.caution?'\n\n[시술 후 주의사항]\n✔ '+noteVal.caution:''}${noteVal.next?'\n\n📅 다음 시술 권장: '+noteVal.next:''}${designerPreview}`}</pre>
-            </div>
-          )}
-          <div className="card">
-            <pre className="text-xs text-gray-500 whitespace-pre-wrap leading-relaxed">{PRIVACY_TEXT}</pre>
-            <label className="flex items-center gap-2 mt-4 cursor-pointer">
-              <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-              <span className="text-sm font-medium">위 내용에 동의합니다 (필수)</span>
-            </label>
-          </div>
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          <button onClick={handleSubmit} disabled={loading||!agreed} className="btn-primary w-full py-3 disabled:opacity-50">
-            {loading?(uploadingPhotos?'사진 업로드 중...':'저장 중...'):(consentType==='sms_consent'?'✅ 저장하고 동의 링크 발송':'✅ 확인하고 문자 발송')}
-          </button>
-        </div>
-      </div>
-    )
+  async function handleSmsConsent() {
+    if (!custPhone.trim()) { setError('연락처를 먼저 입력해주세요'); return }
+    setSendingConsent(true)
+    let customerId = existingCustomer?.id
+    if (!existingCustomer) {
+      const {supabase} = await import('../../lib/supabase')
+      const {data:newCust} = await supabase.from('customers').insert({designer_id:session.designer_id,name:custName||'고객',phone:custPhone,consent_status:'pending',consent_type:'sms'}).select().single()
+      if (newCust) { setExistingCustomer(newCust); customerId = newCust.id }
+    }
+    const res = await fetch('/api/consent/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:customerId,designer_id:session.designer_id})})
+    setSendingConsent(false)
+    if (res.ok) alert('동의 요청 문자를 발송했어요.\n고객이 동의 후 시술 기록 작성이 가능합니다.')
+    else alert('발송 실패. 다시 시도해주세요.')
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 pb-8">
-      <div className="bg-white shadow-sm px-4 py-4 flex items-center gap-3">
-        <button onClick={()=>router.push('/dashboard')} className="text-gray-500 text-lg">←</button>
-        <h2 className="text-lg font-semibold">시술 기록 작성</h2>
-      </div>
-      <div className="px-4 py-5 max-w-lg mx-auto space-y-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
-          <p className="text-xs text-blue-700 leading-relaxed">🛡 헤어로그는 개인정보보호법을 준수합니다. 구두 동의 또는 문자 동의가 완료된 고객만 시술 기록 작성이 가능합니다.</p>
-        </div>
-        <div className="card">
-          <h3 className="font-semibold mb-3">📋 개인정보 동의 방식</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={()=>setConsentType('oral')}
-              className={`p-3 rounded-xl border-2 text-left transition ${consentType==='oral'?'border-primary bg-amber-50':'border-gray-200 bg-white'}`}>
-              <div className="text-lg mb-1">🗣</div>
-              <div className="text-sm font-bold text-gray-700">구두 동의</div>
-              <div className="text-xs text-gray-400 mt-0.5">현장에서 직접 동의 완료</div>
-            </button>
-            <button type="button" onClick={()=>setConsentType('sms_consent')}
-              className={`p-3 rounded-xl border-2 text-left transition ${consentType==='sms_consent'?'border-primary bg-amber-50':'border-gray-200 bg-white'}`}>
-              <div className="text-lg mb-1">📱</div>
-              <div className="text-sm font-bold text-gray-700">문자 동의</div>
-              <div className="text-xs text-gray-400 mt-0.5">고객에게 동의 링크 발송</div>
-            </button>
-          </div>
-          {consentType==='sms_consent' && (
-            <p className="text-xs text-amber-600 mt-2 bg-amber-50 rounded-lg px-3 py-2">📨 저장 시 고객에게 동의 링크가 발송됩니다. 시술 내역 문자는 발송되지 않아요.</p>
-          )}
-        </div>
-        <div className="card space-y-4">
-          <h3 className="font-semibold">👤 고객 정보</h3>
-          <div><label className="block text-sm font-medium mb-1">고객 이름 <span className="text-red-400">*</span></label><input className="input" value={custName} onChange={e=>setCustName(e.target.value)} placeholder="홍길동" /></div>
-          <div><label className="block text-sm font-medium mb-1">휴대전화번호 <span className="text-red-400">*</span></label><input className="input" value={custPhone} onChange={e=>setCustPhone(e.target.value)} placeholder="010-1234-5678" inputMode="tel" /></div>
-          <div>
-            <label className="block text-sm font-medium mb-2">성별</label>
-            <div className="flex gap-2">
-              {[{v:'female',l:'여성 👩'},{v:'male',l:'남성 👨'}].map(({v,l})=>(
-                <button key={v} type="button" onClick={()=>setGender(gender===v?'':v)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${gender===v?'bg-accent text-white border-accent':'bg-white text-gray-600 border-gray-300'}`}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div><label className="block text-sm font-medium mb-1">시술 날짜</label><input className="input" type="date" value={svcDate} onChange={e=>setSvcDate(e.target.value)} /></div>
-        </div>
+  function toggleTag(k:string,t:string){setTags(p=>{const c=p[k]||[];return{...p,[k]:c.includes(t)?c.filter(x=>x!==t):[...c,t]}})}
+  function toggleColorTag(g:string,t:string){setColorTags(p=>{const c=p[g]||[];return{...p,[g]:c.includes(t)?c.filter(x=>x!==t):[...c,t]}})}
+  function addPhrase(tab:string,p:string){setNoteVal(prev=>({...prev,[tab]:prev[tab]?prev[tab]+'\n'+p:p}))}
+  function savePhrase(tab:string){const v=noteInput[tab]?.trim();if(!v)return;const mine=lsGet('hl_p_'+tab);if(mine.includes(v)){alert('이미 저장됨');return};mine.unshift(v);if(mine.length>15)mine.pop();lsSet('hl_p_'+tab,mine);setMyPhrases(p=>({...p,[tab]:mine}));setNoteInput(p=>({...p,[tab]:''}))}
+  function deleteMyPhrase(tab:string,i:number){const mine=lsGet('hl_p_'+tab);mine.splice(i,1);lsSet('hl_p_'+tab,mine);setMyPhrases(p=>({...p,[tab]:mine}))}
+  function saveMyStyle(k:string){const v=svcInput[k]?.trim();if(!v)return;const mine=lsGet('hl_s_'+k);if(mine.includes(v)){alert('이미 저장됨');return};mine.unshift(v);if(mine.length>20)mine.pop();lsSet('hl_s_'+k,mine);setSvcInput(p=>({...p,[k]:''}));setSvcTick(t=>t+1)}
+  function deleteMyStyle(k:string,i:number){const mine=lsGet('hl_s_'+k);mine.splice(i,1);lsSet('hl_s_'+k,mine);setSvcTick(t=>t+1)}
+  function handlePhotoSelect(e:React.ChangeEvent<HTMLInputElement>){Array.from(e.target.files||[]).slice(0,5-photos.length).forEach(file=>{const r=new FileReader();r.onload=ev=>{setPhotos(p=>[...p,{preview:ev.target?.result as string,file}])};r.readAsDataURL(file)});if(fileInputRef.current)fileInputRef.current.value=''}
+  function removePhoto(i:number){setPhotos(p=>p.filter((_,idx)=>idx!==i))}
+  async function uploadPhotos():Promise<string[]>{if(!photos.length)return[];const urls:string[]=[];for(const p of photos){const r=new FileReader();const b64=await new Promise<string>(res=>{r.onload=e=>res(e.target?.result as string);r.readAsDataURL(p.file)});const res=await fetch('/api/upload-photo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_base64:b64,file_name:p.file.name,designer_id:session.designer_id})});const d=await res.json();if(d.url)urls.push(d.url)};return urls}
+  function buildSvc(){const parts:string[]=[];SERVICE_ITEMS.forEach(({k,label})=>{if(!checked[k])return;if(k==='color'){const cp=Object.entries(colorTags).map(([,ts])=>ts.join(' ')).filter(Boolean);parts.push(label+(cp.length?': '+cp.join(' / '):''))}else{const ts=tags[k]||[];parts.push(label+(ts.length?': '+ts.join(', '):''))}});return parts.join(' · ')}
+  function validate(){if(!custName.trim())return '고객 이름을 입력해주세요';if(!custPhone.trim())return '연락처를 입력해주세요';if(consentStatus!=='agreed')return '개인정보 동의가 필요합니다';if(!Object.values(checked).some(Boolean))return '시술 항목을 선택해주세요';return ''}
+  function goConfirm(){const err=validate();if(err){setError(err);return};setError('');setStep('confirm')}
+  async function handleSubmit(){
+    if(!agreed){setError('개인정보 수집 동의가 필요합니다');return}
+    setLoading(true);setError('');setUploadingPhotos(true)
+    const photoUrls=await uploadPhotos();setUploadingPhotos(false)
+    const res=await fetch('/api/service-records/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({designer_id:session.designer_id,customer_name:custName,customer_phone:custPhone,service_date:svcDate,service_type:buildSvc(),gender:gender||null,damage_level:dmgLevel||null,damage_part:dmgPart||null,care_method:noteVal.care||null,caution:noteVal.caution||null,next_service:noteVal.next||null,memo:noteVal.memo||null,cust_memo:custMemo||null,secret_recipe:recipe||null,photo_urls:photoUrls.length>0?photoUrls:null,consent_type:existingCustomer?.consent_type||'verbal'})})
+    const data=await res.json();setLoading(false)
+    if(res.ok)router.replace('/dashboard')
+    else setError(data.error||'오류가 발생했습니다')
+  }
 
-        <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100"><h3 className="font-semibold">✂️ 시술 항목 <span className="text-red-400 text-xs">*</span></h3></div>
-          <div className="divide-y divide-gray-100">
-            {SERVICE_ITEMS.map(({k,icon,label})=>{
-              const myStyles=lsGet('hl_s_'+k); const curTags=tags[k]||[]; const isCkd=!!checked[k]
-              return (
-                <div key={k+'-'+svcTick}>
-                  <button type="button" onClick={()=>setChecked(prev=>({...prev,[k]:!prev[k]}))} className="w-full flex items-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition text-left">
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isCkd?'bg-primary border-primary':'border-gray-300'}`}>{isCkd&&<span className="text-white text-xs font-bold">✓</span>}</div>
-                    <span className="text-lg">{icon}</span><span className="text-sm font-semibold flex-1">{label}</span>
-                  </button>
-                  {isCkd&&(
-                    <div className="bg-gray-50 border-t border-gray-100 px-4 py-3 space-y-3">
-                      {k==='cut'&&(gender==='male'?<div className="flex flex-wrap gap-2">{CUT_MALE.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)} />)}</div>
-                        :!cutLen?<div><p className="text-xs text-gray-400 mb-2">기장 선택</p><div className="flex gap-2 flex-wrap">{['숏','단발','미디움','롱'].map(l=><button key={l} type="button" onClick={()=>setCutLen(l)} className="px-4 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white text-gray-600 hover:border-accent transition">{l}</button>)}</div></div>
-                        :<div><button onClick={()=>setCutLen('')} className="text-xs text-accent font-semibold mb-2 block">‹ {cutLen} 변경</button><div className="flex flex-wrap gap-2">{(CUT_FEMALE[cutLen]||[]).map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)} />)}</div></div>)}
-                      {k==='perm'&&<div className="flex flex-wrap gap-2">{(gender==='male'?PERM_MALE:PERM_FEMALE).map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)} />)}</div>}
-                      {k==='color'&&<div className="space-y-3">{Object.entries(COLOR_GROUPS).map(([grp,items])=><div key={grp}><p className="text-xs text-gray-400 font-semibold mb-1.5">{grp}</p><div className="flex flex-wrap gap-2">{items.map(t=><Chip key={t} label={t} active={(colorTags[grp]||[]).includes(t)} onClick={()=>toggleColorTag(grp,t)} />)}</div></div>)}</div>}
-                      {k==='clinic'&&<div className="flex flex-wrap gap-2">{CLINIC_LIST.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)} />)}</div>}
-                      {k==='scalp'&&<div className="flex flex-wrap gap-2">{SCALP_LIST.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)} />)}</div>}
-                      {myStyles.length>0&&(
-                        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
-                          {myStyles.map((s:string,i:number)=>(
-                            <div key={i} className="flex">
-                              <button type="button" onClick={()=>toggleTag(k,s)} className={`px-3 py-1.5 rounded-l-full text-xs font-semibold border-y border-l transition ${curTags.includes(s)?'bg-accent text-white border-accent':'bg-amber-50 text-amber-700 border-amber-300'}`}>⭐ {s}</button>
-                              <button type="button" onClick={()=>deleteMyStyle(k,i)} className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs hover:bg-red-50 hover:text-red-400">×</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <input value={svcInput[k]||''} onChange={e=>setSvcInput(prev=>({...prev,[k]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveMyStyle(k)}}} className="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-xs outline-none bg-amber-50/50 focus:border-accent" placeholder="직접 입력 후 저장★" />
-                        <button type="button" onClick={()=>saveMyStyle(k)} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-bold whitespace-nowrap">저장 ⭐</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-            <div className="px-4 py-3 flex items-center gap-4 bg-white">
-              <span className="text-sm text-gray-600 flex-shrink-0">손상도 <span className="text-xs text-gray-400">(선택)</span></span>
-              <div className="flex gap-2 ml-auto">{['상','중','하'].map(l=><button key={l} type="button" onClick={()=>setDmgLevel(dmgLevel===l?'':l)} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${dmgLevel===l?'bg-primary text-white border-primary':'bg-white text-gray-500 border-gray-300'}`}>{l}</button>)}</div>
-            </div>
-            <div className="px-4 pb-3 bg-white"><input className="input text-sm" value={dmgPart} onChange={e=>setDmgPart(e.target.value)} placeholder="부분 손상도 직접 입력 (예: 끝머리 20cm 가량)" /></div>
-          </div>
-        </div>
+  if(!session)return null
+  const noteTabs=[{k:'care',l:'손질법'},{k:'caution',l:'주의사항'},{k:'next',l:'다음시술'},{k:'memo',l:'메모'}]
+  const svc=buildSvc()
+  const consentAgreed=consentStatus==='agreed'
+  const designerPreview=designer?`\n\n담당: ${designer.salon_name||''}${designer.position?' '+designer.position:''} ${designer.name||''}${designer.business_hours?'\n영업: '+designer.business_hours:''}${designer.day_off?' (정기휴무: '+designer.day_off+')':''}${designer.temp_holidays?'\n임시휴무: '+designer.temp_holidays:''}`:''if(step==='confirm'){return(<div className="min-h-screen bg-white pb-28"><div className="bg-white sticky top-0 z-50 px-4 py-4 flex items-center gap-3 border-b border-zinc-100"><button onClick={()=>setStep('form')} className="p-1 rounded-lg hover:bg-zinc-100 transition"><span className="text-zinc-600 text-lg">←</span></button><h2 className="text-base font-semibold tracking-tight">시술 내역 확인</h2></div><div className="px-4 py-5 max-w-lg mx-auto space-y-3"><div className="card space-y-0"><p className="text-xs font-semibold text-zinc-400 mb-3 tracking-wider uppercase">고객 정보</p><div className="divide-y divide-zinc-100 text-sm"><CRow label="고객명" val={custName}/><CRow label="연락처" val={custPhone}/><CRow label="성별" val={gender==='female'?'여성':gender==='male'?'남성':'-'}/><CRow label="시술일" val={svcDate}/><CRow label="시술" val={svc}/><CRow label="동의" val={existingCustomer?.consent_type==='verbal'?'구두 동의':'문자 동의'}/>{dmgLevel&&<CRow label="손상도" val={dmgLevel}/>}{dmgPart&&<CRowLong label="부분 손상" val={dmgPart}/>}{noteVal.care&&<CRowLong label="손질법" val={noteVal.care}/>}{noteVal.caution&&<CRowLong label="주의사항" val={noteVal.caution}/>}{noteVal.next&&<CRow label="다음 시술" val={noteVal.next}/>}{noteVal.memo&&<CRowLong label="메모" val={noteVal.memo}/>}</div></div>{photos.length>0&&(<div className="card"><p className="text-xs font-semibold text-zinc-400 mb-2 tracking-wider uppercase">시술 사진 {photos.length}장</p><div className="flex gap-2 flex-wrap">{photos.map((p,i)=><img key={i} src={p.preview} className="w-16 h-16 rounded-lg object-cover border border-zinc-200" alt=""/>)}</div></div>)}{(custMemo||recipe)&&(<div className="card border-zinc-200 bg-zinc-50"><div className="flex items-center gap-2 mb-3"><Lock size={12} className="text-zinc-400"/><p className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">디자이너 전용</p></div><div className="divide-y divide-zinc-200 text-sm">{custMemo&&<CRowLong label="고객 메모" val={custMemo}/>}{recipe&&<CRowLong label="비밀 레시피" val={recipe}/>}</div></div>)}<div className="card bg-zinc-900 border-zinc-800"><p className="text-xs font-medium text-zinc-500 mb-3 tracking-wider uppercase">발송될 문자</p><pre className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap font-mono">{`[헤어로그] 시술 내역 안내\n\n${custName}님, 오늘 시술 감사드립니다.\n\n날짜: ${svcDate}\n시술: ${svc}${noteVal.care?'\n손질법: '+noteVal.care:''}${noteVal.caution?'\n주의: '+noteVal.caution:''}${noteVal.next?'\n다음 시술: '+noteVal.next:''}${designerPreview}`}</pre></div><div className="card"><p className="text-xs text-zinc-500 leading-relaxed mb-4">[개인정보 수집 및 이용 동의]{'\n'}수집 목적: 시술 이력 관리, 맞춤 케어 서비스, SMS 발송{'\n'}수집 항목: 성명, 연락처, 시술 내역{'\n'}보유 기간: 동의 철회 또는 서비스 종료 시까지</p><label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} className="w-4 h-4 accent-zinc-900 rounded"/><span className="text-sm font-medium text-zinc-800">위 내용에 동의합니다 (필수)</span></label></div>{error&&<p className="text-red-500 text-sm text-center">{error}</p>}<button onClick={handleSubmit} disabled={loading||!agreed} className="btn-primary w-full py-4 text-sm">{loading?(uploadingPhotos?'사진 업로드 중...':'저장 중...'):'저장 및 문자 발송'}</button></div><BottomNavBar activeMenu="service" router={router}/></div>)}
 
-        <div className="card">
-          <h3 className="font-semibold mb-3">📸 시술 사진 <span className="text-xs text-gray-400 font-normal">(선택 · 최대 5장)</span></h3>
-          <div className="flex gap-3 flex-wrap">
-            {photos.map((p,i)=><div key={i} className="relative"><img src={p.preview} className="w-20 h-20 rounded-xl object-cover border border-gray-200" alt="" /><button type="button" onClick={()=>removePhoto(i)} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center font-bold shadow">×</button></div>)}
-            {photos.length<5&&<button type="button" onClick={()=>fileInputRef.current?.click()} className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center gap-1 hover:border-accent hover:bg-amber-50 transition"><span className="text-2xl">📷</span><span className="text-xs text-gray-400 font-medium">사진 추가</span></button>}
-          </div>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-        </div>
-
-        <div className="card p-0 overflow-hidden">
-          <div className="flex border-b border-gray-100">
-            {noteTabs.map(t=><button key={t.k} onClick={()=>setNoteTab(t.k)} className={`flex-1 py-3 text-xs font-semibold border-b-2 transition ${noteTab===t.k?'text-primary border-primary':'text-gray-400 border-transparent'}`}>{t.l}</button>)}
-          </div>
-          <div className="p-4 space-y-3">
-            {(myPhrases[noteTab]||[]).length>0&&(
-              <div className="flex flex-wrap gap-2">
-                {(myPhrases[noteTab]||[]).map((p:string,i:number)=>(
-                  <div key={i} className="flex">
-                    <button type="button" onClick={()=>addPhrase(noteTab,p)} className="px-3 py-1.5 rounded-l-full text-xs font-semibold bg-amber-50 text-amber-700 border-y border-l border-amber-300 hover:bg-amber-100 max-w-[200px] truncate">⭐ {p}</button>
-                    <button type="button" onClick={()=>deleteMyPhrase(noteTab,i)} className="px-2 rounded-r-full border-y border-r border-amber-300 bg-amber-50 text-amber-500 text-xs">×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {(DEFAULT_PHRASES[noteTab]||[]).map((p:string)=><button key={p} type="button" onClick={()=>addPhrase(noteTab,p)} className="px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition">{p}</button>)}
-            </div>
-            <div className="flex gap-2">
-              <input value={noteInput[noteTab]||''} onChange={e=>setNoteInput(prev=>({...prev,[noteTab]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePhrase(noteTab)}}} className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-xs outline-none bg-amber-50/50 focus:border-accent" placeholder="직접 입력 후 저장★ 누르면 내 문구로 저장돼요" />
-              <button type="button" onClick={()=>savePhrase(noteTab)} className="px-3 py-2 bg-accent text-white rounded-lg text-xs font-bold whitespace-nowrap">저장 ⭐</button>
-            </div>
-            <textarea value={noteVal[noteTab]||''} onChange={e=>setNoteVal(prev=>({...prev,[noteTab]:e.target.value}))} rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none outline-none focus:border-accent" placeholder="위 태그를 클릭하거나 직접 입력하세요" />
-          </div>
-        </div>
-
-        <div className="card p-0 overflow-hidden divide-y divide-gray-100">
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div><div className="text-sm font-semibold">🔒 비밀 레시피</div><div className="text-xs text-gray-400 mt-0.5">나만 보는 레시피</div></div>
-            <button onClick={()=>setShowRecipe(!showRecipe)} className={`w-11 h-6 rounded-full transition-colors relative ${showRecipe?'bg-primary':'bg-gray-200'}`}><div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${showRecipe?'left-5':'left-0.5'}`} /></button>
-          </div>
-          {showRecipe&&<div className="px-4 pb-3"><textarea className="input text-sm mt-2 resize-none" rows={2} value={recipe} onChange={e=>setRecipe(e.target.value)} placeholder="예) 밀본 7.60 × 3% 산화제 1:1, 방치 25분" /></div>}
-          <button type="button" onClick={()=>setShowMemo(!showMemo)} className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-gray-50 transition">
-            <span className="text-base">📌</span>
-            <div className="flex-1"><div className="text-sm font-semibold text-green-700">고객 메모</div><div className="text-xs text-gray-400">다음 시술 참고 · 고객 비공개</div></div>
-            <span className="text-gray-400 text-sm">{showMemo?'∧':'∨'}</span>
-          </button>
-          {showMemo&&<div className="px-4 pb-3"><textarea className="input text-sm resize-none" rows={2} value={custMemo} onChange={e=>setCustMemo(e.target.value)} placeholder="예) 다음엔 파마 강도 조금 세게, 두피 민감" /></div>}
-        </div>
-
-        {error&&<p className="text-red-500 text-sm text-center">{error}</p>}
-        <button onClick={goConfirm} className="btn-primary w-full py-3 text-base">다음 → 내용 확인</button>
-      </div>
-    </div>
-  )
+  return(<div className="min-h-screen bg-white pb-28"><div className="bg-white sticky top-0 z-50 px-4 py-4 flex items-center gap-3 border-b border-zinc-100"><button onClick={()=>router.push('/dashboard')} className="p-1 rounded-lg hover:bg-zinc-100 transition"><span className="text-zinc-600 text-lg">←</span></button><h2 className="text-base font-semibold tracking-tight">시술 기록 작성</h2></div><div className="px-4 py-5 max-w-lg mx-auto space-y-4"><div className="card space-y-3"><p className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">고객 정보</p><div><label className="block text-xs font-medium text-zinc-600 mb-1.5">이름 <span className="text-red-400">*</span></label><input className="input" value={custName} onChange={e=>setCustName(e.target.value)} placeholder="홍길동"/></div><div><label className="block text-xs font-medium text-zinc-600 mb-1.5">연락처 <span className="text-red-400">*</span></label><input className="input" value={custPhone} onChange={e=>setCustPhone(e.target.value)} onBlur={e=>{if(session)checkConsent(e.target.value)}} placeholder="010-1234-5678" inputMode="tel"/></div>{consentStatus==='checking'&&<p className="text-xs text-zinc-400">확인 중...</p>}{consentStatus==='agreed'&&(<div className="flex items-center gap-2 py-2 px-3 bg-emerald-50 rounded-lg border border-emerald-100"><CheckCircle size={14} className="text-emerald-600 flex-shrink-0"/><span className="text-xs font-medium text-emerald-700">동의 완료 — {existingCustomer?.consent_type==='verbal'?'구두 동의':'문자 동의'}</span></div>)}{(consentStatus==='pending'||consentStatus==='rejected'||consentStatus==='new')&&(<div className="border border-zinc-200 rounded-xl p-4 bg-zinc-50 space-y-3"><div><p className="text-sm font-semibold text-zinc-800">개인정보 수집 동의 필요</p><p className="text-xs text-zinc-500 mt-0.5">시술 기록 작성 전 동의를 진행해 주세요.</p></div><div className="border border-zinc-200 rounded-lg p-3 bg-white"><div className="flex items-center gap-1.5 mb-1.5"><Mic size={11} className="text-zinc-400"/><p className="text-[10px] font-semibold text-zinc-400 tracking-wider uppercase">현장 안내 가이드</p></div><p className="text-xs text-zinc-600 leading-relaxed">"고객님, 시술 이력 관리와 재방문 알림을 위해 개인정보 수집에 구두 동의해 주시겠어요?"</p></div><div className="grid grid-cols-2 gap-2"><button onClick={handleSmsConsent} disabled={sendingConsent} className="flex items-center justify-center gap-1.5 py-2.5 border border-zinc-300 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition disabled:opacity-50"><MessageSquare size={13}/>{sendingConsent?'발송 중...':'문자로 동의 요청'}</button><button onClick={handleVerbalConsent} disabled={processingVerbal} className="flex items-center justify-center gap-1.5 py-2.5 bg-[#18181B] text-white rounded-xl text-xs font-semibold hover:bg-zinc-800 transition disabled:opacity-50"><Mic size={13}/>{processingVerbal?'처리 중...':'구두 동의 완료'}</button></div></div>)}<div><label className="block text-xs font-medium text-zinc-600 mb-1.5">성별</label><div className="flex gap-2">{[{v:'female',l:'여성'},{v:'male',l:'남성'}].map(({v,l})=>(<button key={v} type="button" onClick={()=>setGender(gender===v?'':v)} className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition ${gender===v?'bg-[#18181B] text-white border-[#18181B]':'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>{l}</button>))}</div></div><div><label className="block text-xs font-medium text-zinc-600 mb-1.5">시술 날짜</label><input className="input" type="date" value={svcDate} onChange={e=>setSvcDate(e.target.value)}/></div></div><div className={`transition-all ${!consentAgreed?'opacity-40 pointer-events-none select-none':''}`}><div className="card p-0 overflow-hidden"><div className="px-4 py-3 border-b border-zinc-100"><p className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">시술 항목 <span className="text-red-400">*</span></p></div><div className="divide-y divide-zinc-100">{SERVICE_ITEMS.map(({k,label})=>{const myStyles=lsGet('hl_s_'+k);const curTags=tags[k]||[];const isCkd=!!checked[k];return(<div key={k+'-'+svcTick}><button type="button" onClick={()=>setChecked(p=>({...p,[k]:!p[k]}))} className="w-full flex items-center gap-3 px-4 py-3.5 bg-white hover:bg-zinc-50 transition text-left"><div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition ${isCkd?'bg-[#18181B] border-[#18181B]':'border-zinc-300'}`}>{isCkd&&<span className="text-white text-[9px] font-black">✓</span>}</div><span className="text-sm font-medium text-zinc-800">{label}</span></button>{isCkd&&(<div className="bg-zinc-50 border-t border-zinc-100 px-4 py-3 space-y-3">{k==='cut'&&(gender==='male'?<div className="flex flex-wrap gap-1.5">{CUT_MALE.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)}/>)}</div>:!cutLen?<div><p className="text-xs text-zinc-400 mb-2">기장 선택</p><div className="flex gap-2 flex-wrap">{['숏','단발','미디움','롱'].map(l=><button key={l} type="button" onClick={()=>setCutLen(l)} className="px-4 py-2 rounded-lg text-xs font-medium border border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 transition">{l}</button>)}</div></div>:<div><button onClick={()=>setCutLen('')} className="text-xs text-[#B37346] font-medium mb-2 block">‹ {cutLen} 변경</button><div className="flex flex-wrap gap-1.5">{(CUT_FEMALE[cutLen]||[]).map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)}/>)}</div></div>)}{k==='perm'&&<div className="flex flex-wrap gap-1.5">{(gender==='male'?PERM_MALE:PERM_FEMALE).map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)}/>)}</div>}{k==='color'&&<div className="space-y-3">{Object.entries(COLOR_GROUPS).map(([g,items])=><div key={g}><p className="text-xs font-medium text-zinc-400 mb-1.5">{g}</p><div className="flex flex-wrap gap-1.5">{items.map(t=><Chip key={t} label={t} active={(colorTags[g]||[]).includes(t)} onClick={()=>toggleColorTag(g,t)}/>)}</div></div>)}</div>}{k==='clinic'&&<div className="flex flex-wrap gap-1.5">{CLINIC_LIST.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)}/>)}</div>}{k==='scalp'&&<div className="flex flex-wrap gap-1.5">{SCALP_LIST.map(t=><Chip key={t} label={t} active={curTags.includes(t)} onClick={()=>toggleTag(k,t)}/>)}</div>}{myStyles.length>0&&(<div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-200">{myStyles.map((s:string,i:number)=>(<div key={i} className="flex"><button type="button" onClick={()=>toggleTag(k,s)} className={`px-3 py-1.5 rounded-l-full text-xs font-medium border-y border-l transition ${curTags.includes(s)?'bg-[#18181B] text-white border-[#18181B]':'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>★ {s}</button><button type="button" onClick={()=>deleteMyStyle(k,i)} className="px-2 rounded-r-full border-y border-r border-zinc-200 bg-white text-zinc-400 text-xs hover:bg-red-50 hover:text-red-400 transition">×</button></div>))}</div>)}<div className="flex gap-2"><input value={svcInput[k]||''} onChange={e=>setSvcInput(p=>({...p,[k]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveMyStyle(k)}}} className="flex-1 border border-zinc-200 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-zinc-400 placeholder:text-zinc-400" placeholder="직접 입력 후 저장"/><button type="button" onClick={()=>saveMyStyle(k)} className="px-3 py-2 bg-zinc-100 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-200 transition whitespace-nowrap">저장 ★</button></div></div>)}</div>)})}<div className="px-4 py-3 flex items-center gap-4 bg-white"><span className="text-xs font-medium text-zinc-600 flex-shrink-0">손상도</span><div className="flex gap-2 ml-auto">{['상','중','하'].map(l=>(<button key={l} type="button" onClick={()=>setDmgLevel(dmgLevel===l?'':l)} className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${dmgLevel===l?'bg-[#18181B] text-white border-[#18181B]':'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400'}`}>{l}</button>))}</div></div><div className="px-4 pb-3 bg-white"><input className="input text-xs" value={dmgPart} onChange={e=>setDmgPart(e.target.value)} placeholder="부분 손상 상세 (예: 끝머리 20cm)"/></div></div></div><div className="card mt-4"><p className="text-xs font-semibold text-zinc-400 mb-3 tracking-wider uppercase">시술 사진 <span className="font-normal">(최대 5장)</span></p><div className="flex gap-2.5 flex-wrap">{photos.map((p,i)=>(<div key={i} className="relative"><img src={p.preview} className="w-20 h-20 rounded-xl object-cover border border-zinc-200" alt=""/><button type="button" onClick={()=>removePhoto(i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-zinc-800 text-white rounded-full text-xs flex items-center justify-center font-bold shadow"><X size={10}/></button></div>))}{photos.length<5&&(<button type="button" onClick={()=>fileInputRef.current?.click()} className="w-20 h-20 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 flex flex-col items-center justify-center gap-1 hover:border-zinc-400 transition"><Camera size={18} className="text-zinc-400"/><span className="text-[10px] text-zinc-400 font-medium">추가</span></button>)}</div><input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect}/></div><div className="card p-0 overflow-hidden mt-4"><div className="flex border-b border-zinc-100 bg-zinc-50 p-1 gap-1">{noteTabs.map(t=>(<button key={t.k} onClick={()=>setNoteTab(t.k)} className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${noteTab===t.k?'bg-white text-zinc-800 shadow-sm':'text-zinc-400 hover:text-zinc-600'}`}>{t.l}</button>))}</div><div className="p-4 space-y-3">{(myPhrases[noteTab]||[]).length>0&&(<div className="flex flex-wrap gap-1.5">{(myPhrases[noteTab]||[]).map((p:string,i:number)=>(<div key={i} className="flex"><button type="button" onClick={()=>addPhrase(noteTab,p)} className="px-3 py-1.5 rounded-l-full text-xs font-medium bg-white text-zinc-700 border-y border-l border-zinc-200 hover:bg-zinc-50 max-w-[180px] truncate">★ {p}</button><button type="button" onClick={()=>deleteMyPhrase(noteTab,i)} className="px-2 rounded-r-full border-y border-r border-zinc-200 bg-white text-zinc-400 text-xs hover:text-red-400">×</button></div>))}</div>)}<div className="flex flex-wrap gap-1.5">{(DEFAULT_PHRASES[noteTab]||[]).map((p:string)=>(<button key={p} type="button" onClick={()=>addPhrase(noteTab,p)} className="px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 transition">{p}</button>))}</div><div className="flex gap-2"><input value={noteInput[noteTab]||''} onChange={e=>setNoteInput(p=>({...p,[noteTab]:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePhrase(noteTab)}}} className="flex-1 border border-zinc-200 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-zinc-400 placeholder:text-zinc-400" placeholder="직접 입력 후 저장"/><button type="button" onClick={()=>savePhrase(noteTab)} className="px-3 py-2 bg-zinc-100 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-200 transition whitespace-nowrap">저장 ★</button></div><textarea value={noteVal[noteTab]||''} onChange={e=>setNoteVal(p=>({...p,[noteTab]:e.target.value}))} rows={2} className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-xs resize-none outline-none focus:border-zinc-400 bg-zinc-50" placeholder="위 태그를 눌러 추가하거나 직접 입력"/></div></div><div className="card p-0 overflow-hidden mt-4 divide-y divide-zinc-100"><div className="px-4 py-3.5 flex items-center justify-between"><div className="flex items-center gap-2"><Lock size={13} className="text-zinc-400"/><div><div className="text-xs font-semibold text-zinc-700">비밀 레시피</div><div className="text-[10px] text-zinc-400 mt-0.5">고객 비공개</div></div></div><button onClick={()=>setShowRecipe(!showRecipe)} style={{height:'22px',width:'40px'}} className={`rounded-full transition-colors relative ${showRecipe?'bg-[#18181B]':'bg-zinc-200'}`}><div className="absolute w-4 h-4 bg-white rounded-full shadow transition-all" style={{top:'3px',left:showRecipe?'22px':'3px'}}/></button></div>{showRecipe&&(<div className="px-4 pb-3 pt-1"><textarea className="input text-xs resize-none mt-1" rows={2} value={recipe} onChange={e=>setRecipe(e.target.value)} placeholder="예) 밀본 7.60 × 3% 산화제 1:1, 방치 25분"/></div>)}<button type="button" onClick={()=>setShowMemo(!showMemo)} className="w-full px-4 py-3.5 flex items-center gap-2 text-left hover:bg-zinc-50 transition"><span className="text-zinc-400 text-xs">📌</span><div className="flex-1"><div className="text-xs font-semibold text-zinc-700">고객 메모</div><div className="text-[10px] text-zinc-400 mt-0.5">다음 방문 참고 · 고객 비공개</div></div>{showMemo?<ChevronUp size={14} className="text-zinc-400"/>:<ChevronDown size={14} className="text-zinc-400"/>}</button>{showMemo&&(<div className="px-4 pb-3 pt-1"><textarea className="input text-xs resize-none" rows={2} value={custMemo} onChange={e=>setCustMemo(e.target.value)} placeholder="예) 다음엔 파마 강도 세게, 두피 민감"/></div>)}</div></div>{error&&<p className="text-red-500 text-xs text-center">{error}</p>}<button onClick={goConfirm} disabled={!consentAgreed} className="btn-primary w-full py-3.5 text-sm disabled:opacity-40">{consentAgreed?'다음 — 내용 확인':'동의 후 작성 가능합니다'}</button></div><BottomNavBar activeMenu="service" router={router}/></div>)
 }
 
-function Chip({label,active,onClick}:{label:string;active:boolean;onClick:()=>void}) {
-  return <button type="button" onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${active?'bg-primary text-white border-primary':'bg-white text-gray-600 border-gray-200 hover:border-accent'}`}>{label}</button>
-}
-function CRow({label,val}:{label:string;val:string}) {
-  return <div className="flex justify-between py-2"><span className="text-gray-400 flex-shrink-0 mr-4">{label}</span><span className="font-medium text-right">{val||'-'}</span></div>
-}
-function CRowLong({label,val}:{label:string;val:string}) {
-  return <div className="py-2"><span className="text-gray-400 text-xs block mb-1">{label}</span><p className="font-medium text-sm leading-relaxed whitespace-pre-wrap">{val}</p></div>
+function Chip({label,active,onClick}:{label:string;active:boolean;onClick:()=>void}){return(<button type="button" onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition active:scale-[0.97] ${active?'bg-[#18181B] text-white border-[#18181B]':'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>{label}</button>)}
+function CRow({label,val}:{label:string;val:string}){return(<div className="flex justify-between items-center py-2.5"><span className="text-xs text-zinc-400 flex-shrink-0 mr-4">{label}</span><span className="text-sm font-medium text-zinc-800 text-right">{val||'-'}</span></div>)}
+function CRowLong({label,val}:{label:string;val:string}){return(<div className="py-2.5"><span className="text-xs text-zinc-400 block mb-1">{label}</span><p className="text-sm font-medium text-zinc-800 leading-relaxed whitespace-pre-wrap">{val}</p></div>)}
+function BottomNavBar({activeMenu,router}:{activeMenu:string;router:any}){
+  const menus=[{k:'home',l:'오늘',Icon:CalendarDays,path:'/dashboard'},{k:'customers',l:'고객',Icon:Users,path:'/customers'},{k:'service',l:'시술',Icon:Scissors,path:'/service/new'},{k:'revisit',l:'재방문',Icon:Bell,path:'/revisit'},{k:'profile',l:'프로필',Icon:UserCircle,path:'/profile'}]
+  return(<div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-zinc-200 max-w-lg mx-auto flex justify-around items-center py-2 px-2">{menus.map(({k,l,Icon,path})=>{const isAct=activeMenu===k;return(<button key={k} onClick={()=>router.push(path)} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all active:scale-95"><Icon size={20} strokeWidth={isAct?2:1.5} className={isAct?'text-[#B37346]':'text-zinc-400'}/><span className={`text-[10px] font-medium ${isAct?'text-[#B37346]':'text-zinc-400'}`}>{l}</span></button>)})}</div>)
 }
