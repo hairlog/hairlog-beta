@@ -10,13 +10,38 @@ export default function Dashboard() {
   const [todayRecords, setTodayRecords] = useState<any[]>([])
   const [loadingToday, setLoadingToday] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
 
   useEffect(() => {
     const s = getSession()
     if (!s) { router.replace('/'); return }
     setSession(s)
     loadTodayRecords(s.designer_id)
+
+    const handler = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setShowInstallBanner(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+
+    // 이미 설치됐는지 확인
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBanner(false)
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
+
+  async function handleInstall() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      await deferredPrompt.userChoice
+      setDeferredPrompt(null)
+      setShowInstallBanner(false)
+    }
+  }
 
   async function loadTodayRecords(designer_id: string) {
     setLoadingToday(true)
@@ -48,6 +73,46 @@ export default function Dashboard() {
         </div>
         <button onClick={logout} className="text-sm text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5">로그아웃</button>
       </div>
+
+      {/* 앱 설치 배너 */}
+      {showInstallBanner && (
+        <div className="mx-4 mt-4 bg-accent text-white rounded-2xl px-4 py-3 flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📲</span>
+            <div>
+              <p className="text-sm font-bold">앱으로 설치하기</p>
+              <p className="text-xs opacity-80">홈 화면에 추가하면 더 편해요!</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleInstall}
+              className="bg-white text-accent text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap">
+              설치
+            </button>
+            <button onClick={() => setShowInstallBanner(false)}
+              className="text-white opacity-70 text-xl leading-none">×</button>
+          </div>
+        </div>
+      )}
+
+      {/* 수동 설치 안내 (배너 없을 때) */}
+      {!showInstallBanner && !deferredPrompt && (
+        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span className="text-xl">📲</span>
+          <div className="flex-1">
+            <p className="text-xs text-blue-700 font-semibold">앱처럼 설치하기</p>
+            <p className="text-xs text-blue-500 mt-0.5">
+              안드로이드: 브라우저 메뉴 → 홈 화면에 추가<br/>
+              아이폰: 공유 버튼 → 홈 화면에 추가
+            </p>
+          </div>
+          <button onClick={() => {
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('hideInstallGuide', '1')
+            }
+          }} className="text-blue-300 text-xl leading-none">×</button>
+        </div>
+      )}
 
       <div className="px-4 py-5 max-w-lg mx-auto space-y-5">
         <p className="text-gray-500 text-sm">안녕하세요, <span className="font-semibold text-primary">{session.nickname}</span>님 👋</p>
@@ -97,7 +162,7 @@ export default function Dashboard() {
               {hasMore && (
                 <button onClick={() => setShowAll(!showAll)}
                   className="w-full mt-2 py-2 text-xs text-accent font-semibold border border-accent rounded-lg bg-white hover:bg-amber-50 transition">
-                  {showAll ? '▲ 접기' : `▼ 더보기 (${todayRecords.length - 4}건 더)`}
+                  {showAll ? `▲ 접기` : `▼ 더보기 (${todayRecords.length - 4}건 더)`}
                 </button>
               )}
             </>
@@ -107,19 +172,31 @@ export default function Dashboard() {
         <div className="space-y-3">
           <Link href="/service/new" className="card flex items-center gap-4 hover:shadow-md transition cursor-pointer block">
             <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center text-white text-2xl">✂️</div>
-            <div><p className="font-semibold">시술 기록 작성</p><p className="text-sm text-gray-400">새 시술 내역을 기록해요</p></div>
+            <div>
+              <p className="font-semibold">시술 기록 작성</p>
+              <p className="text-sm text-gray-400">새 시술 내역을 기록해요</p>
+            </div>
           </Link>
           <Link href="/customers" className="card flex items-center gap-4 hover:shadow-md transition cursor-pointer block">
             <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl">👥</div>
-            <div><p className="font-semibold">고객 목록</p><p className="text-sm text-gray-400">고객 검색 및 시술 이력 확인</p></div>
+            <div>
+              <p className="font-semibold">고객 목록</p>
+              <p className="text-sm text-gray-400">고객 검색 및 시술 이력 확인</p>
+            </div>
           </Link>
           <Link href="/revisit" className="card flex items-center gap-4 hover:shadow-md transition cursor-pointer block">
             <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-2xl">🔔</div>
-            <div><p className="font-semibold">재방문 관리</p><p className="text-sm text-gray-400">장기 미방문 고객 문자 발송</p></div>
+            <div>
+              <p className="font-semibold">재방문 관리</p>
+              <p className="text-sm text-gray-400">장기 미방문 고객 문자 발송</p>
+            </div>
           </Link>
           <Link href="/profile" className="card flex items-center gap-4 hover:shadow-md transition cursor-pointer block">
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl">💼</div>
-            <div><p className="font-semibold">내 프로필</p><p className="text-sm text-gray-400">소속, 경력, 예약링크 관리</p></div>
+            <div>
+              <p className="font-semibold">내 프로필</p>
+              <p className="text-sm text-gray-400">소속, 경력, 예약링크 관리</p>
+            </div>
           </Link>
         </div>
       </div>
