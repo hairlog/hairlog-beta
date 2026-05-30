@@ -1,7 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
-import { supabaseAdmin } from '../../lib/supabaseAdmin'
 
 export default function AdminDashboard() {
   const [authed, setAuthed] = useState(false)
@@ -21,29 +18,20 @@ export default function AdminDashboard() {
 
   async function loadData() {
     setLoading(true)
-    const { data: d } = await supabaseAdmin.from('designers').select('*').order('created_at', { ascending: false })
-    const { data: s } = await supabaseAdmin.from('beta_surveys').select('*').order('created_at', { ascending: false })
-    const { data: smsLogs } = await supabaseAdmin.from('sms_logs').select('id').gte('created_at', new Date(Date.now() - 86400000).toISOString())
-    const { data: custList } = await supabaseAdmin.from('customers').select('designer_id')
-    const { data: recList } = await supabaseAdmin.from('service_records').select('designer_id')
-
-    const custMap: Record<string,number> = {}
-    const recMap: Record<string,number> = {}
-    ;(custList||[]).forEach((c:any) => { custMap[c.designer_id] = (custMap[c.designer_id]||0)+1 })
-    ;(recList||[]).forEach((r:any) => { recMap[r.designer_id] = (recMap[r.designer_id]||0)+1 })
-
-    const enriched = (d||[]).map((des:any) => ({
-      ...des, customerCount: custMap[des.id]||0, recordCount: recMap[des.id]||0
-    }))
-
-    setDesigners(enriched)
-    setSurveys(s || [])
-    setStats({
-      totalDesigners: (d||[]).length,
-      todaySms: (smsLogs||[]).length,
-      totalSurveys: (s||[]).length,
-      willingToPay: (s||[]).filter((x:any) => x.price_willingness !== 'free').length,
-    })
+    try {
+      const res = await fetch('/api/admin/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: ADMIN_PW }),
+      })
+      if (!res.ok) { alert('데이터를 불러오지 못했어요'); setLoading(false); return }
+      const json = await res.json()
+      setDesigners(json.designers || [])
+      setSurveys(json.surveys || [])
+      setStats(json.stats || null)
+    } catch (e) {
+      alert('데이터를 불러오지 못했어요')
+    }
     setLoading(false)
   }
 
