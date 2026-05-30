@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
-import { CalendarDays, Users, Scissors, Bell, UserCircle, ChevronRight, CheckCircle } from 'lucide-react'
+import { CalendarDays, Users, Scissors, Bell, UserCircle, ChevronRight, CheckCircle, MessageSquare } from 'lucide-react'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -138,6 +138,19 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+
+        {/* 베타 피드백 */}
+        <Link href="/survey"
+          className="flex items-center gap-4 px-4 py-4 border border-zinc-100 rounded-xl hover:bg-zinc-50 transition active:bg-zinc-100">
+          <div className="w-9 h-9 bg-[#F5EFEA] rounded-xl flex items-center justify-center flex-shrink-0">
+            <MessageSquare size={17} strokeWidth={1.5} className="text-[#B37346]" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-zinc-900 tracking-tight">베타 피드백 남기기</p>
+            <p className="text-xs text-zinc-400 mt-0.5">잠깐의 의견이 헤어로그를 만듭니다</p>
+          </div>
+          <ChevronRight size={15} className="text-zinc-300 flex-shrink-0" />
+        </Link>
       </div>
 
       <BottomNavBar activeMenu="home" router={router} />
