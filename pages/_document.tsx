@@ -17,7 +17,25 @@ export default function Document() {
           __html: `
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js');
+                navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                  reg.update();
+                  reg.addEventListener('updatefound', function() {
+                    var newWorker = reg.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', function() {
+                      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        newWorker.postMessage('skipWaiting');
+                      }
+                    });
+                  });
+                });
+
+                var refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function() {
+                  if (refreshing) return;
+                  refreshing = true;
+                  window.location.reload();
+                });
               });
             }
           `
